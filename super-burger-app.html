@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>سوبر برجر</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #F5C518;
+    --gold-dark: #D4A017;
+    --bg: #0e0c0a;
+    --bg2: #181410;
+    --bg3: #221e18;
+    --card: #1c1810;
+    --text: #fff;
+    --text-muted: #a89880;
+    --accent: #F5C518;
+    --red: #e74c3c;
+    --green: #27ae60;
+    --radius: 16px;
+    --nav-h: 70px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; background:var(--bg); font-family:'Cairo',sans-serif; color:var(--text); overflow:hidden; }
+
+  /* App Shell */
+  #app { width:100%; max-width:430px; margin:0 auto; height:100vh; display:flex; flex-direction:column; position:relative; overflow:hidden; background:var(--bg); box-shadow:0 0 60px #000a; }
+
+  /* Pages */
+  .page { position:absolute; inset:0; bottom:var(--nav-h); overflow-y:auto; overflow-x:hidden; display:none; scroll-behavior:smooth; }
+  .page.active { display:block; }
+  .page::-webkit-scrollbar { display:none; }
+
+  /* Bottom Nav */
+  #bottom-nav {
+    position:absolute; bottom:0; left:0; right:0; height:var(--nav-h);
+    background:linear-gradient(0deg,#0e0c0a 80%,rgba(14,12,10,.7));
+    border-top:1px solid #2a2418;
+    display:flex; align-items:center; justify-content:space-around;
+    z-index:100;
+    backdrop-filter:blur(10px);
+  }
+  .nav-btn {
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;
+    padding:8px 0; cursor:pointer; transition:.2s; position:relative;
+    background:none; border:none; color:var(--text-muted);
+  }
+  .nav-btn.active { color:var(--gold); }
+  .nav-btn svg { width:24px; height:24px; stroke:currentColor; fill:none; stroke-width:2; transition:.2s; }
+  .nav-btn.active svg { stroke:var(--gold); filter:drop-shadow(0 0 6px var(--gold)); }
+  .nav-btn span { font-size:11px; font-weight:700; font-family:'Cairo',sans-serif; }
+  .nav-btn .badge {
+    position:absolute; top:6px; right:calc(50% - 18px);
+    background:var(--red); color:#fff; border-radius:50%; width:18px; height:18px;
+    font-size:10px; font-weight:900; display:flex; align-items:center; justify-content:center;
+  }
+
+  /* ===================== HOME PAGE ===================== */
+  #home-hero {
+    position:relative; width:100%; height:240px; overflow:hidden;
+    display:flex; align-items:flex-end;
+  }
+  #home-hero img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #home-hero::after {
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(to top,var(--bg) 0%,rgba(14,12,10,.7) 40%,rgba(14,12,10,.2) 100%);
+  }
+  .hero-text { position:relative; z-index:1; padding:20px; width:100%; text-align:right; }
+  .hero-tag {
+    display:inline-block; background:var(--gold); color:#000; font-weight:900;
+    font-size:10px; padding:3px 10px; border-radius:4px; letter-spacing:1px; margin-bottom:6px;
+  }
+  .hero-title { font-size:28px; font-weight:900; line-height:1.2; text-shadow:0 2px 12px #000; }
+  .hero-title span { color:var(--gold); }
+  .hero-sub { font-size:12px; color:#ccc; margin-top:4px; }
+
+  .home-header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px; position:absolute; top:0; left:0; right:0; z-index:10;
+  }
+  .logo-box { display:flex; align-items:center; gap:8px; }
+  .logo-box img { width:38px; height:38px; object-fit:contain; border-radius:8px; }
+  .logo-name { font-size:15px; font-weight:900; color:var(--gold); }
+  .header-icons { display:flex; gap:10px; }
+  .hicon { width:36px; height:36px; background:rgba(0,0,0,.5); border-radius:50%; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px); cursor:pointer; border:1px solid #333; }
+  .hicon svg { width:18px; height:18px; stroke:#fff; fill:none; stroke-width:2; }
+
+  .stats-row {
+    display:flex; gap:10px; padding:14px 16px;
+  }
+  .stat-card {
+    flex:1; background:var(--card); border:1px solid #2a2418; border-radius:var(--radius);
+    padding:12px 8px; text-align:center;
+  }
+  .stat-icon { font-size:20px; margin-bottom:4px; }
+  .stat-val { font-size:16px; font-weight:900; color:var(--gold); }
+  .stat-label { font-size:10px; color:var(--text-muted); margin-top:2px; }
+
+  .section-header { display:flex; align-items:center; justify-content:space-between; padding:0 16px 10px; }
+  .section-title { font-size:18px; font-weight:900; }
+  .section-link { font-size:12px; color:var(--gold); cursor:pointer; font-weight:700; }
+
+  /* Promo Banner */
+  .promo-banner {
+    margin:0 16px 16px;
+    background:linear-gradient(135deg,#1a1200,#2d2000);
+    border:1px solid var(--gold-dark); border-radius:var(--radius);
+    padding:16px; display:flex; align-items:center; justify-content:space-between;
+    position:relative; overflow:hidden;
+  }
+  .promo-banner::before {
+    content:''; position:absolute; top:-20px; right:-20px;
+    width:100px; height:100px; background:radial-gradient(circle,rgba(245,197,24,.15),transparent 70%);
+    border-radius:50%;
+  }
+  .promo-text .promo-off { font-size:36px; font-weight:900; color:var(--gold); line-height:1; }
+  .promo-text .promo-off span { font-size:18px; }
+  .promo-text p { font-size:13px; color:#ddd; margin-top:4px; }
+  .promo-text small { font-size:11px; color:var(--text-muted); }
+  .promo-img { width:80px; height:70px; object-fit:cover; border-radius:10px; }
+
+  /* Category Pills */
+  .cats-scroll { display:flex; gap:8px; padding:0 16px 14px; overflow-x:auto; }
+  .cats-scroll::-webkit-scrollbar { display:none; }
+  .cat-pill {
+    flex-shrink:0; padding:8px 16px; border-radius:30px; font-size:13px; font-weight:700;
+    cursor:pointer; transition:.2s; border:1.5px solid #333; color:var(--text-muted);
+    background:var(--card); white-space:nowrap;
+  }
+  .cat-pill.active { background:var(--gold); color:#000; border-color:var(--gold); }
+
+  /* Menu Cards */
+  .menu-list { padding:0 16px; display:flex; flex-direction:column; gap:12px; padding-bottom:20px; }
+  .menu-card {
+    background:var(--card); border:1px solid #2a2418; border-radius:var(--radius);
+    display:flex; align-items:center; gap:12px; padding:12px;
+    position:relative; overflow:hidden; cursor:pointer;
+    transition:transform .15s, border-color .15s;
+  }
+  .menu-card:active { transform:scale(.98); }
+  .menu-card:hover { border-color:var(--gold-dark); }
+  .menu-card-img { width:80px; height:80px; object-fit:cover; border-radius:12px; flex-shrink:0; }
+  .menu-card-info { flex:1; text-align:right; }
+  .menu-card-badge {
+    position:absolute; top:10px; left:10px;
+    background:var(--gold); color:#000; font-size:9px; font-weight:900;
+    padding:2px 8px; border-radius:20px;
+  }
+  .menu-card-badge.new { background:var(--red); color:#fff; }
+  .menu-card-name { font-size:15px; font-weight:900; }
+  .menu-card-desc { font-size:11px; color:var(--text-muted); margin-top:2px; line-height:1.5; }
+  .menu-card-footer { display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:8px; }
+  .menu-card-price { font-size:17px; font-weight:900; color:var(--gold); }
+  .menu-card-price span { font-size:11px; }
+  .add-btn {
+    width:30px; height:30px; background:var(--gold); border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px; font-weight:700; color:#000; cursor:pointer;
+    transition:transform .15s, box-shadow .15s;
+    border:none; flex-shrink:0;
+  }
+  .add-btn:active { transform:scale(.88); }
+  .add-btn:hover { box-shadow:0 0 12px rgba(245,197,24,.5); }
+
+  /* ===================== MENU PAGE ===================== */
+  .menu-page-header {
+    background:linear-gradient(180deg,#0e0c0a,transparent);
+    padding:16px; position:sticky; top:0; z-index:10;
+    backdrop-filter:blur(8px);
+  }
+  .menu-search {
+    display:flex; align-items:center; gap:10px;
+    background:var(--card); border:1px solid #333; border-radius:30px;
+    padding:10px 16px;
+  }
+  .menu-search input {
+    flex:1; background:none; border:none; outline:none; color:var(--text);
+    font-family:'Cairo',sans-serif; font-size:14px; text-align:right;
+  }
+  .menu-search input::placeholder { color:var(--text-muted); }
+  .menu-search svg { width:18px; height:18px; stroke:var(--text-muted); fill:none; stroke-width:2; flex-shrink:0; }
+
+  .menu-section { padding:0 16px 20px; }
+  .menu-section-title {
+    font-size:14px; font-weight:900; color:var(--gold); letter-spacing:1px;
+    margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #2a2418;
+    text-align:right;
+  }
+
+  /* ===================== ORDERS PAGE ===================== */
+  .orders-header { padding:20px 16px 10px; text-align:right; }
+  .orders-title { font-size:22px; font-weight:900; }
+  .orders-sub { font-size:13px; color:var(--text-muted); margin-top:4px; }
+
+  .order-tabs { display:flex; gap:0; padding:0 16px 16px; }
+  .order-tab {
+    flex:1; padding:10px; text-align:center; font-size:13px; font-weight:700;
+    cursor:pointer; border-bottom:2px solid #333; color:var(--text-muted); transition:.2s;
+  }
+  .order-tab.active { border-bottom-color:var(--gold); color:var(--gold); }
+
+  .orders-list { padding:0 16px; display:flex; flex-direction:column; gap:14px; padding-bottom:20px; }
+  .order-card {
+    background:var(--card); border:1px solid #2a2418; border-radius:var(--radius);
+    padding:14px; cursor:pointer; transition:border-color .2s;
+  }
+  .order-card:hover { border-color:var(--gold-dark); }
+  .order-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .order-id { font-size:13px; font-weight:900; color:var(--gold); }
+  .order-status {
+    font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px;
+  }
+  .status-preparing { background:rgba(245,197,24,.15); color:var(--gold); }
+  .status-delivered { background:rgba(39,174,96,.15); color:var(--green); }
+  .status-cancelled { background:rgba(231,76,60,.15); color:var(--red); }
+  .order-items { font-size:13px; color:var(--text-muted); text-align:right; line-height:1.8; }
+  .order-footer { display:flex; align-items:center; justify-content:space-between; margin-top:10px; padding-top:10px; border-top:1px solid #2a2418; }
+  .order-total { font-size:16px; font-weight:900; color:var(--gold); }
+  .order-date { font-size:11px; color:var(--text-muted); }
+  .reorder-btn {
+    background:var(--gold); color:#000; border:none; border-radius:20px;
+    padding:6px 16px; font-size:12px; font-weight:900; cursor:pointer;
+    font-family:'Cairo',sans-serif; transition:opacity .2s;
+  }
+  .reorder-btn:hover { opacity:.85; }
+
+  .empty-orders { text-align:center; padding:60px 20px; }
+  .empty-icon { font-size:60px; margin-bottom:16px; }
+  .empty-title { font-size:18px; font-weight:900; margin-bottom:8px; }
+  .empty-sub { font-size:13px; color:var(--text-muted); }
+  .order-now-btn {
+    margin-top:24px; display:inline-block; background:var(--gold); color:#000;
+    padding:12px 32px; border-radius:30px; font-size:15px; font-weight:900;
+    cursor:pointer; border:none; font-family:'Cairo',sans-serif; transition:opacity .2s;
+  }
+
+  /* Cart Overlay */
+  #cart-overlay {
+    position:absolute; bottom:var(--nav-h); left:0; right:0;
+    background:linear-gradient(0deg,var(--bg) 0%,transparent 100%);
+    padding:16px; z-index:50; pointer-events:none; opacity:0;
+    transition:opacity .3s;
+  }
+  #cart-overlay.visible { opacity:1; pointer-events:all; }
+  .cart-bar {
+    background:var(--gold); border-radius:30px;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 20px; cursor:pointer; box-shadow:0 8px 32px rgba(245,197,24,.3);
+  }
+  .cart-bar-info { display:flex; align-items:center; gap:10px; }
+  .cart-count { background:#000; color:var(--gold); width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:900; }
+  .cart-bar-text { font-size:14px; font-weight:900; color:#000; }
+  .cart-bar-total { font-size:16px; font-weight:900; color:#000; }
+
+  /* Toast */
+  #toast {
+    position:absolute; bottom:calc(var(--nav-h) + 80px); left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--card); border:1px solid var(--gold); color:var(--text);
+    padding:10px 20px; border-radius:30px; font-size:13px; font-weight:700;
+    opacity:0; transition:opacity .3s,transform .3s; z-index:200; white-space:nowrap;
+  }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* Animations */
+  @keyframes fadeInUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+  .page.active .menu-card, .page.active .order-card, .page.active .stat-card {
+    animation:fadeInUp .4s both;
+  }
+  .page.active .menu-card:nth-child(2) { animation-delay:.05s; }
+  .page.active .menu-card:nth-child(3) { animation-delay:.1s; }
+  .page.active .menu-card:nth-child(4) { animation-delay:.15s; }
+  .page.active .menu-card:nth-child(5) { animation-delay:.2s; }
+
+  .add-btn.pop { animation:pop .3s; }
+  @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.4)} 100%{transform:scale(1)} }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ========== HOME PAGE ========== -->
+  <div class="page active" id="page-home">
+    <!-- Header -->
+    <div class="home-header">
+      <div class="header-icons">
+        <div class="hicon">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        </div>
+        <div class="hicon">
+          <svg viewBox="0 0 24 24"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+        </div>
+      </div>
+      <div class="logo-box">
+        <span class="logo-name">سوبر برجر</span>
+        <img src="/mnt/user-data/uploads/237400795_864126854211042_3639956866098725478_n.png" alt="logo">
+      </div>
+    </div>
+
+    <!-- Hero -->
+    <div id="home-hero">
+      <img src="/mnt/user-data/uploads/aaa.png" alt="hero">
+      <div class="hero-text">
+        <div class="hero-tag">THE BEST EVER</div>
+        <div class="hero-title">ألذّ برجر<br><span>في قلقيلية</span></div>
+        <div class="hero-sub">طازج • مشوي على الفحم • محتكر بحب</div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-icon">🚚</div>
+        <div class="stat-val">مجاني</div>
+        <div class="stat-label">التوصيل</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">⏱️</div>
+        <div class="stat-val">25 د</div>
+        <div class="stat-label">التحضير</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">⭐</div>
+        <div class="stat-val">4.8</div>
+        <div class="stat-label">التقييم</div>
+      </div>
+    </div>
+
+    <!-- Promo Banner -->
+    <div class="promo-banner">
+      <div class="promo-text">
+        <div class="promo-off"><span>%</span>20 خصم</div>
+        <p>على الكومبو اليوم</p>
+        <small>برجر + بطاطا + مشروب</small>
+      </div>
+      <img src="/mnt/user-data/uploads/655470048_957517016659651_2131906196345451245_n.jpg" alt="promo" class="promo-img">
+    </div>
+
+    <!-- Categories -->
+    <div class="section-header">
+      <span class="section-link" onclick="goToMenu()">عرض الكل</span>
+      <span class="section-title">القائمة</span>
+    </div>
+    <div class="cats-scroll">
+      <div class="cat-pill active" onclick="filterCat(this,'all')">الأكثر طلباً</div>
+      <div class="cat-pill" onclick="filterCat(this,'burger')">برجر</div>
+      <div class="cat-pill" onclick="filterCat(this,'chicken')">دجاج</div>
+      <div class="cat-pill" onclick="filterCat(this,'extras')">إضافات</div>
+      <div class="cat-pill" onclick="filterCat(this,'drinks')">مشروبات</div>
+    </div>
+
+    <!-- Menu Items -->
+    <div class="menu-list" id="home-menu-list">
+      <!-- filled by JS -->
+    </div>
+  </div>
+
+  <!-- ========== MENU PAGE ========== -->
+  <div class="page" id="page-menu">
+    <div class="menu-page-header">
+      <div style="text-align:right;font-size:20px;font-weight:900;margin-bottom:12px;">القائمة الكاملة</div>
+      <div class="menu-search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" placeholder="ابحث عن صنف..." oninput="searchMenu(this.value)" id="search-input">
+      </div>
+    </div>
+
+    <div class="cats-scroll" style="padding-top:0;">
+      <div class="cat-pill active" onclick="menuFilterCat(this,'all')">الكل</div>
+      <div class="cat-pill" onclick="menuFilterCat(this,'burger')">برجر</div>
+      <div class="cat-pill" onclick="menuFilterCat(this,'chicken')">دجاج</div>
+      <div class="cat-pill" onclick="menuFilterCat(this,'extras')">إضافات</div>
+      <div class="cat-pill" onclick="menuFilterCat(this,'drinks')">مشروبات</div>
+    </div>
+
+    <div id="menu-sections">
+      <!-- filled by JS -->
+    </div>
+  </div>
+
+  <!-- ========== ORDERS PAGE ========== -->
+  <div class="page" id="page-orders">
+    <div class="orders-header">
+      <div class="orders-title">طلباتي</div>
+      <div class="orders-sub">تابع حالة طلباتك هنا</div>
+    </div>
+
+    <div class="order-tabs">
+      <div class="order-tab active" onclick="switchOrderTab(this,'active-orders')">الحالية</div>
+      <div class="order-tab" onclick="switchOrderTab(this,'past-orders')">السابقة</div>
+    </div>
+
+    <div id="active-orders" class="orders-list">
+      <div class="order-card">
+        <div class="order-card-header">
+          <span class="order-status status-preparing">🔥 قيد التحضير</span>
+          <span class="order-id">#2047</span>
+        </div>
+        <div class="order-items">
+          سوبر كلاسيك × 2<br>
+          بيكون ديل × 1<br>
+          بطاطا مقرمشة × 2
+        </div>
+        <div class="order-footer">
+          <span class="order-date">منذ 12 دقيقة</span>
+          <span class="order-total">₪98</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="past-orders" class="orders-list" style="display:none;">
+      <div class="order-card">
+        <div class="order-card-header">
+          <span class="order-status status-delivered">✅ تم التوصيل</span>
+          <span class="order-id">#2046</span>
+        </div>
+        <div class="order-items">سايسي تشيكن × 1 | بطاطا × 1</div>
+        <div class="order-footer">
+          <button class="reorder-btn" onclick="reorder()">إعادة الطلب</button>
+          <span class="order-total">₪44</span>
+        </div>
+      </div>
+      <div class="order-card">
+        <div class="order-card-header">
+          <span class="order-status status-delivered">✅ تم التوصيل</span>
+          <span class="order-id">#2041</span>
+        </div>
+        <div class="order-items">سوبر كلاسيك × 3 | كولا × 3</div>
+        <div class="order-footer">
+          <button class="reorder-btn" onclick="reorder()">إعادة الطلب</button>
+          <span class="order-total">₪105</span>
+        </div>
+      </div>
+      <div class="order-card">
+        <div class="order-card-header">
+          <span class="order-status status-cancelled">❌ ملغي</span>
+          <span class="order-id">#2039</span>
+        </div>
+        <div class="order-items">بيكون ديل × 2</div>
+        <div class="order-footer">
+          <button class="reorder-btn" onclick="reorder()">إعادة الطلب</button>
+          <span class="order-total">₪84</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cart Bar -->
+  <div id="cart-overlay">
+    <div class="cart-bar" onclick="showCartToast()">
+      <span class="cart-bar-total" id="cart-total">₪0</span>
+      <span class="cart-bar-text">عرض السلة</span>
+      <div class="cart-bar-info">
+        <div class="cart-count" id="cart-count">0</div>
+        <svg width="20" height="20" fill="none" stroke="#000" stroke-width="2" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <!-- Bottom Nav -->
+  <div id="bottom-nav">
+    <button class="nav-btn active" onclick="navigate('home',this)">
+      <svg viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span>الرئيسية</span>
+    </button>
+    <button class="nav-btn" onclick="navigate('menu',this)">
+      <svg viewBox="0 0 24 24"><path d="M9 2h6l2 7H7L9 2z"/><path d="M3 9h18v3a9 9 0 0 1-18 0V9z"/></svg>
+      <span>القائمة</span>
+    </button>
+    <button class="nav-btn" onclick="navigate('orders',this)" id="orders-nav-btn">
+      <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      <span>طلباتي</span>
+      <div class="badge" id="orders-badge">1</div>
+    </button>
+  </div>
+</div>
+
+<script>
+const menuData = [
+  { id:1, name:'سوبر كلاسيك', desc:'لحم بقري طازج، جبنة شيدر، خس، طماطم', price:28, cat:'burger', badge:'الأكثر مبيعاً', img:'/mnt/user-data/uploads/150841295_764215764202152_3769928363300113336_n.jpg' },
+  { id:2, name:'بيكون ديل', desc:'قطعتين لحم، بيكون مقرمش، جبنة مزدوجة', price:42, cat:'burger', badge:'new', img:'/mnt/user-data/uploads/655470048_957517016659651_2131906196345451245_n.jpg' },
+  { id:3, name:'سايسي تشيكن', desc:'دجاج مقرمش حار، هالبينو، صوص خاص', price:32, cat:'chicken', badge:'', img:'/mnt/user-data/uploads/655470048_957517016659651_2131906196345451245_n.jpg' },
+  { id:4, name:'بطاطا مقرمشة', desc:'بطاطا ذهبية مقلية، توابل البيت', price:12, cat:'extras', badge:'', img:'/mnt/user-data/uploads/aaa.png' },
+  { id:5, name:'كومبو كلاسيك', desc:'برجر + بطاطا + مشروب بخصم 20%', price:52, cat:'burger', badge:'عرض', img:'/mnt/user-data/uploads/aaa.png' },
+  { id:6, name:'كولا 500 مل', desc:'مشروب غازي بارد', price:8, cat:'drinks', badge:'', img:'/mnt/user-data/uploads/aaa.png' },
+  { id:7, name:'كريمة حار', desc:'صوص بيت مع لمسة حارة', price:5, cat:'extras', badge:'', img:'/mnt/user-data/uploads/aaa.png' },
+  { id:8, name:'تشيكن كريسبي', desc:'دجاج مقرمش مع صوص رانش', price:34, cat:'chicken', badge:'new', img:'/mnt/user-data/uploads/150841295_764215764202152_3769928363300113336_n.jpg' },
+];
+
+let cart = {};
+let currentFilter = 'all';
+let menuCurrentFilter = 'all';
+
+function getBadgeHTML(badge) {
+  if (!badge) return '';
+  const cls = badge === 'new' ? 'new' : '';
+  const label = badge === 'new' ? 'جديد' : badge;
+  return `<div class="menu-card-badge ${cls}">${label}</div>`;
+}
+
+function renderHomeMenu(filter='all') {
+  const list = document.getElementById('home-menu-list');
+  const items = filter === 'all' ? menuData.slice(0,5) : menuData.filter(i=>i.cat===filter);
+  list.innerHTML = items.map(item => `
+    <div class="menu-card">
+      ${getBadgeHTML(item.badge)}
+      <div class="add-btn" onclick="addToCart(${item.id},this)">+</div>
+      <div class="menu-card-info">
+        <div class="menu-card-name">${item.name}</div>
+        <div class="menu-card-desc">${item.desc}</div>
+        <div class="menu-card-footer">
+          <div class="menu-card-price">₪${item.price}<span></span></div>
+        </div>
+      </div>
+      <img class="menu-card-img" src="${item.img}" alt="${item.name}" onerror="this.src='/mnt/user-data/uploads/aaa.png'">
+    </div>
+  `).join('');
+}
+
+function renderMenuPage(filter='all', search='') {
+  const container = document.getElementById('menu-sections');
+  const cats = { burger:'🍔 برجر', chicken:'🐔 دجاج', extras:'🍟 إضافات', drinks:'🥤 مشروبات' };
+  let items = filter === 'all' ? menuData : menuData.filter(i=>i.cat===filter);
+  if (search) items = items.filter(i=>i.name.includes(search)||i.desc.includes(search));
+
+  if (filter === 'all') {
+    let html = '';
+    for (const [cat, label] of Object.entries(cats)) {
+      const catItems = items.filter(i=>i.cat===cat);
+      if (!catItems.length) continue;
+      html += `<div class="menu-section">
+        <div class="menu-section-title">${label}</div>
+        <div class="menu-list" style="padding:0;">
+          ${catItems.map(item=>`
+            <div class="menu-card">
+              ${getBadgeHTML(item.badge)}
+              <div class="add-btn" onclick="addToCart(${item.id},this)">+</div>
+              <div class="menu-card-info">
+                <div class="menu-card-name">${item.name}</div>
+                <div class="menu-card-desc">${item.desc}</div>
+                <div class="menu-card-footer">
+                  <div class="menu-card-price">₪${item.price}</div>
+                </div>
+              </div>
+              <img class="menu-card-img" src="${item.img}" alt="${item.name}" onerror="this.src='/mnt/user-data/uploads/aaa.png'">
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+    }
+    container.innerHTML = html;
+  } else {
+    container.innerHTML = `<div class="menu-section">
+      <div class="menu-list" style="padding:0;">
+        ${items.map(item=>`
+          <div class="menu-card">
+            ${getBadgeHTML(item.badge)}
+            <div class="add-btn" onclick="addToCart(${item.id},this)">+</div>
+            <div class="menu-card-info">
+              <div class="menu-card-name">${item.name}</div>
+              <div class="menu-card-desc">${item.desc}</div>
+              <div class="menu-card-footer">
+                <div class="menu-card-price">₪${item.price}</div>
+              </div>
+            </div>
+            <img class="menu-card-img" src="${item.img}" alt="${item.name}" onerror="this.src='/mnt/user-data/uploads/aaa.png'">
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+  }
+}
+
+function addToCart(id, btn) {
+  const item = menuData.find(i=>i.id===id);
+  if (!item) return;
+  cart[id] = (cart[id]||0)+1;
+  updateCartBar();
+  btn.classList.remove('pop');
+  void btn.offsetWidth;
+  btn.classList.add('pop');
+  showToast(`✅ أُضيف: ${item.name}`);
+}
+
+function updateCartBar() {
+  const total = Object.entries(cart).reduce((s,[id,q])=>{
+    const item=menuData.find(i=>i.id==id);
+    return s+(item?item.price*q:0);
+  },0);
+  const count = Object.values(cart).reduce((s,q)=>s+q,0);
+  document.getElementById('cart-count').textContent=count;
+  document.getElementById('cart-total').textContent=`₪${total}`;
+  const overlay=document.getElementById('cart-overlay');
+  if(count>0) overlay.classList.add('visible'); else overlay.classList.remove('visible');
+}
+
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2000);
+}
+
+function showCartToast() { showToast('🛒 جاري تطوير صفحة الدفع...'); }
+
+function navigate(page, btn) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  btn.classList.add('active');
+  if (page==='menu') { renderMenuPage(menuCurrentFilter); }
+}
+
+function goToMenu() {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-menu').classList.add('active');
+  document.querySelectorAll('.nav-btn')[1].classList.add('active');
+  renderMenuPage('all');
+}
+
+function filterCat(el, cat) {
+  document.querySelectorAll('#page-home .cat-pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  currentFilter=cat;
+  renderHomeMenu(cat);
+}
+
+function menuFilterCat(el, cat) {
+  document.querySelectorAll('#page-menu .cat-pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  menuCurrentFilter=cat;
+  document.getElementById('search-input').value='';
+  renderMenuPage(cat);
+}
+
+function searchMenu(q) {
+  renderMenuPage(menuCurrentFilter, q);
+}
+
+function switchOrderTab(el, tabId) {
+  document.querySelectorAll('.order-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('active-orders').style.display = tabId==='active-orders'?'flex':'none';
+  document.getElementById('past-orders').style.display = tabId==='past-orders'?'flex':'none';
+}
+
+function reorder() { showToast('✅ تمت إضافة الطلب للسلة!'); }
+
+// Init
+renderHomeMenu('all');
+</script>
+</body>
+</html>

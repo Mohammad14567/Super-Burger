@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "940699127756",
+    "project_id": "superburger-2570b",
+    "storage_bucket": "superburger-2570b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:940699127756:android:9c97ff17a2ade97cc39769",
+        "android_client_info": {
+          "package_name": "com.superburger.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDVHWWb9F_oR4JXG71FCHYMog1orL9uZqA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
