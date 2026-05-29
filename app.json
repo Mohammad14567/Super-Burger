@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -15,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.superburger.app",
-      "googleServicesFile": "./GoogleService-Info.plist",
+      "googleServicesFile": "GoogleService-Info.plist",
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
