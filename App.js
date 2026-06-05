@@ -35,38 +35,6 @@ const COLORS = {
   green: '#27ae60',
 };
 
-const menuData = [
-  { id: 1, name: 'كلاسيك بيف', desc: '160غم لحم طازج، خس، مخلل، بندورة، بصل، جبنة تشيدر، سوبر صوص', price: 20, cat: 'burger', options: [{ name: 'جبنة تشيدر', price: 3 }, { name: 'جبنة موتزاريلا', price: 3 }, { name: 'بيض', price: 2 }, { name: 'لحم زيادة', price: 8 }, { name: 'صوص', price: 2 }] },
-  { id: 2, name: 'BBQ برجر', desc: '160غم لحم طازج، خس، مخلل، بندورة، بصل، جبنة تشيدر، باربيكيو صوص', price: 21, cat: 'burger', options: [{ name: 'جبنة تشيدر', price: 3 }, { name: 'بيبركيون', price: 3 }, { name: 'لحم زيادة', price: 8 }, { name: 'بيض', price: 2 }] },
-  { id: 3, name: 'هالبينو بيف', desc: '160غم لحم طازج، خس، مخلل، بندورة، بصل، جبنة تشيدر، شرائح هالبينو', price: 22, cat: 'burger', options: [{ name: 'جبنة تشيدر', price: 3 }, { name: 'هالبينو', price: 2 }, { name: 'لحم زيادة', price: 8 }, { name: 'جبن موتزاريلا', price: 3 }] },
-  { id: 4, name: 'تكساس برجر', desc: '160غم لحم طازج، خس، مخلل، بندورة، بصل، جبنة تشيدر، حلقات بصل مقلية', price: 24, cat: 'burger', options: [{ name: 'جبنة تشيدر', price: 3 }, { name: 'حلقات بصل', price: 3 }, { name: 'لحم زيادة', price: 8 }] },
-  { id: 5, name: 'سوبر برجر', desc: '200غم لحم طازج، خس، مخلل، بندورة، سوبر صوص، جبنة تشيدر، جبنة موتزاريلا', price: 30, cat: 'burger', options: [{ name: 'لحم زيادة', price: 8 }, { name: 'بيض', price: 2 }, { name: 'تونس', price: 2 }] },
-  { id: 6, name: 'مونستر برجر', desc: '320غم لحم طازج (قطعتين)، خس، مخلل، بندورة، بصل، سوبر صوص، جبنة تشيدر، جبنة موتزاريلا', price: 35, cat: 'burger', options: [{ name: 'لحم زيادة', price: 8 }, { name: 'جبنة تشيدر', price: 3 }] },
-  { id: 7, name: 'هوت دوغ برجر', desc: '160غم لحم طازج، خس، مخلل، بندورة، بصل، سوبر صوص، جبنة تشيدر وموتزاريلا، أصابع هوت دوغ مشوية', price: 25, cat: 'burger', options: [{ name: 'لحم زيادة', price: 8 }, { name: 'هوت دوغ', price: 3 }, { name: 'جبنة', price: 3 }] },
-  { id: 8, name: 'بيروني برجر', desc: '160غم لحم طازج، خس، مخلل، بندورة، بصل، جبنة تشيدر، سوبر صوص، شرائح بيروني مشوية', price: 25, cat: 'burger', options: [{ name: 'بيروني', price: 4 }, { name: 'لحم زيادة', price: 8 }] },
-  { id: 9, name: 'موروكو برجر', desc: '160غم لحم طازج، خس، مخلل، بندورة، بصل، سوبر صوص، حلقات البصل، قطع السلامي المشوي', price: 29, cat: 'burger', options: [{ name: 'سلامي', price: 5 }, { name: 'لحم زيادة', price: 8 }] },
-  { id: 10, name: 'سلطع برجر', desc: '180غم لحم مدخن طازج، خس، مخلل، بصل، بندورة، باربيكيو صوص', price: 29, cat: 'burger', options: [{ name: 'لحم زيادة', price: 8 }, { name: 'خبز', price: 2 }] },
-  { id: 11, name: 'ميلانو برجر', desc: '160غم لحم طازج، خس، مخلل، بندورة، بصل، سوبر صوص، جبنة تشيدر وموتزاريلا، أصبعين موتزاريلا، قطعة سالمي مشوية', price: 26, cat: 'burger', options: [{ name: 'سلامي', price: 5 }, { name: 'لحم زيادة', price: 8 }] },
-  { id: 12, name: 'ماشروم برجر', desc: '160غم لحم طازج، خس، مخلل، بصل، جبنة موتزاريلا، صوص الماشروم الطازج', price: 26, cat: 'burger', options: [{ name: 'ماشروم', price: 3 }, { name: 'جبنة موتزاريلا', price: 3 }, { name: 'لحم زيادة', price: 8 }] },
-  { id: 13, name: 'كلاسيك تشيكن', desc: 'صدر دجاج مقلي، خس، بندورة، مخلل، سوبر صوص، سويت تشيلي صوص', price: 16, cat: 'chicken', options: [{ name: 'صوص سويت تشيلي', price: 1 }, { name: 'صوص حار', price: 1 }, { name: 'جبنة', price: 2 }] },
-  { id: 14, name: 'كريسبي تشيكن', desc: 'صدر دجاج مقلي بخلطة الكريسبي، خس، بندورة، مخلل، سوبر صوص، سويت تشيلي صوص', price: 17, cat: 'chicken', options: [{ name: 'صوص سويت تشيلي', price: 1 }, { name: 'صوص حار', price: 1 }] },
-  { id: 15, name: 'ماشين تشيكن', desc: 'صدر دجاج مقلي بالخلطة السرية، خس، بندورة، مخلل، سوبر صوص، سويت تشيلي صوص', price: 21, cat: 'chicken', options: [{ name: 'صوص سويت تشيلي', price: 1 }, { name: 'صوص حار', price: 1 }] },
-  { id: 16, name: 'دوريتوس تشيكن', desc: 'صدر دجاج مقلي بخلطة الدوريتوس، خس، بندورة، مخلل، سوبر صوص، سويت تشيلي صوص', price: 20, cat: 'chicken', options: [{ name: 'صوص سويت تشيلي', price: 1 }, { name: 'صوص حار', price: 1 }] },
-  { id: 17, name: 'هالبينو تشيكن', desc: 'صدر دجاج مقلي، خس، بندورة، مخلل، قطع هالبينو، سوبر صوص، سويت تشيلي صوص، تشيلي صوص', price: 18, cat: 'chicken', options: [{ name: 'هالبينو', price: 2 }, { name: 'صوص حار', price: 1 }] },
-  { id: 18, name: 'تشيكن ستربس', desc: 'قطع دجاج مقلية (متوفر حار أو عادي)', price: 15, cat: 'chicken', options: [{ name: 'حار', price: 0 }, { name: 'عادي', price: 0 }] },
-  { id: 19, name: 'بطاطا', desc: 'بطاطا مقلية ذهبية', price: 6, cat: 'extras', options: [{ name: 'ملح', price: 0 }, { name: 'بابريكا', price: 1 }] },
-  { id: 20, name: 'بطاطا مع جبنة', desc: 'بطاطا مقلية مع جبنة سائلة', price: 11, cat: 'extras', options: [] },
-  { id: 21, name: 'حلقات البصل', desc: 'حلقات بصل مقلية مقرمشة', price: 10, cat: 'extras', options: [] },
-  { id: 22, name: 'ودجز', desc: 'قطع بطاطا مقلية صغيرة', price: 10, cat: 'extras', options: [] },
-  { id: 23, name: 'كرات البطاطا', desc: 'كرات بطاطا مقلية', price: 10, cat: 'extras', options: [] },
-  { id: 24, name: 'أصابع الموتزاريلا', desc: 'أصابع جبنة موتزاريلا مقلية', price: 15, cat: 'extras', options: [] },
-  { id: 25, name: 'كيرلي', desc: 'بطاطا مجعودة مقلية', price: 14, cat: 'extras', options: [] },
-  { id: 26, name: 'سوبر بوكس', desc: 'بوكس سوبر برجر مع بطاطا ومشروب', price: 25, cat: 'extras', options: [] },
-  { id: 27, name: 'جبنة سائلة', desc: 'صوص جبنة سائلة', price: 5, cat: 'extras', options: [] },
-  { id: 28, name: 'كرات الجبنة بالهالبينو', desc: 'كرات جبنة محشوة بهالبينو', price: 15, cat: 'extras', options: [] },
-  { id: 29, name: 'أجنحة الدجاج', desc: 'أجنحة دجاج مقلية (سويت وينجز، وينجز حار، باربيكيو وينجز، كرانش وينجز)', price: 15, cat: 'extras', options: [{ name: 'سويت وينجز', price: 0 }, { name: 'وينجز حار', price: 0 }, { name: 'باربيكيو', price: 1 }, { name: 'كرانش', price: 1 }] },
-];
-
 const categories = [
   { key: 'all', label: 'الكل' },
   { key: 'burger', label: 'برجر' },
@@ -475,30 +443,19 @@ const [adminOrders, setAdminOrders] = React.useState([]);
   }, [isAdmin]);
 
   React.useEffect(() => {
-    if (isAdmin) {
-      try {
-        const unsubscribe = onSnapshot(collection(db, 'menu'), snapshot => {
-            if (snapshot) {
-              const menu = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-              if (menu.length > 0) setMenuFromDB(menu);
-            }
-          });
-        return () => unsubscribe();
-      } catch(e) {
-        console.log('Menu load error:', e.message);
-      }
+    try {
+      const unsubscribe = onSnapshot(collection(db, 'menu'), snapshot => {
+          if (snapshot) {
+            const menu = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setMenuFromDB(menu);
+          }
+        }, (error) => {
+          console.log('Menu sync error:', error.message);
+        });
+      return () => unsubscribe();
+    } catch(e) {
+      console.log('Menu sync setup error:', e.message);
     }
-  }, [isAdmin]);
-
-  React.useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(cop1Float, { toValue: -10, duration: 2000, useNativeDriver: true }),
-        Animated.timing(cop1Float, { toValue: 0, duration: 2000, useNativeDriver: true }),
-      ])
-);
-    anim.start();
-    return () => anim.stop();
   }, []);
 
   const toggleExpand = (id) => {
@@ -1410,7 +1367,7 @@ const [adminOrders, setAdminOrders] = React.useState([]);
       </View>
 
       <View style={styles.menuList}>
-        {(menuFromDB.length > 0 ? menuFromDB : menuData).filter(i => menuCat === 'all' || i.cat === menuCat).filter(i => !searchText || (i.name && i.name.includes(searchText))).map((item) => (
+        {menuFromDB.filter(i => menuCat === 'all' || i.cat === menuCat).filter(i => !searchText || (i.name && i.name.includes(searchText))).map((item) => (
           <View key={item.id} style={[styles.menuCard, selectedItem === item.id && styles.menuCardHighlighted]}>
             {item.badge ? <View style={[styles.menuCardBadge, item.badge === 'جديد' && styles.menuCardBadgeNew]}><Text style={styles.menuCardBadgeText}>{item.badge}</Text></View> : null}
             {item.image ? (
@@ -1445,6 +1402,27 @@ const [adminOrders, setAdminOrders] = React.useState([]);
             </View>
           </View>
         ))}
+        {menuFromDB.length === 0 && (
+          <View style={styles.emptyMenuState}>
+            <Ionicons name="restaurant-outline" size={64} color={COLORS.textMuted} />
+            <Text style={styles.emptyMenuTitle}>القائمة فاضية</Text>
+            <Text style={styles.emptyMenuText}>لا توجد أصناف متاحة حاليًا</Text>
+            {isAdmin && (
+              <>
+                <Text style={styles.emptyMenuAdminHint}>
+                  أضف أصنافك من "إدارة المطعم"
+                </Text>
+                <TouchableOpacity
+                  style={styles.emptyMenuBtn}
+                  onPress={() => { setActiveTab('menuMgmt'); setMgmtView('menu'); }}
+                >
+                  <Ionicons name="add-circle" size={20} color="#000" />
+                  <Text style={{ color: '#000', fontWeight: '900', fontSize: 14 }}>إضافة أصناف الآن</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
       </View>
       <View style={{ height: 100 }} />
     </ScrollView>
@@ -2660,6 +2638,42 @@ const styles = StyleSheet.create({
   menuMgmtItemOptions: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
   menuMgmtDeleteBtn: { padding: 8 },
   menuMgmtEditBtn: { padding: 8 },
+  emptyMenuState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 20,
+  },
+  emptyMenuTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#fff',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptyMenuText: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  emptyMenuAdminHint: {
+    fontSize: 13,
+    color: COLORS.gold,
+    marginTop: 16,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  emptyMenuBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.gold,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 16,
+  },
   optionsInputRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   addOptionBtn: { width: 44, height: 44, backgroundColor: COLORS.gold, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   optionsList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
