@@ -88,21 +88,40 @@ app.get('/delete-account', (req, res) => {
 });
 
 app.post('/register-token', async (req, res) => {
-  const { token, phone } = req.body;
+  const { token, phone, idToken } = req.body;
   if (!db) return res.json({ success: false, error: 'Firebase not configured' });
+  if (!idToken) {
+    return res.status(401).json({ success: false, error: 'Missing auth token' });
+  }
   try {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    if (!decoded.uid) {
+      return res.status(401).json({ success: false, error: 'Invalid auth token' });
+    }
+    const userDoc = await db.collection('users').doc(decoded.uid).get();
+    if (!userDoc.exists || userDoc.data().phone !== phone) {
+      return res.status(403).json({ success: false, error: 'Phone mismatch with auth' });
+    }
     await db.collection('fcmTokens').doc(phone).set({ token, updatedAt: new Date() });
     res.json({ success: true });
   } catch(e) {
     console.log('Error saving token:', e.message);
-    res.json({ success: false, error: e.message });
+    res.status(401).json({ success: false, error: 'Auth failed' });
   }
 });
 
 app.post('/send-notification', async (req, res) => {
-  const { phone, token, title, body, tokens } = req.body;
+  const { phone, token, title, body, tokens, idToken } = req.body;
   if (!db) return res.json({ success: false, error: 'Firebase not configured' });
+  if (!idToken) {
+    return res.status(401).json({ success: false, error: 'Missing auth token' });
+  }
   try {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    const isAdminUser = decoded.admin === true;
+    if (!isAdminUser) {
+      return res.status(403).json({ success: false, error: 'Admin only' });
+    }
     if (tokens && Array.isArray(tokens)) {
       const messages = tokens.map(t => ({
         token: t,
@@ -134,12 +153,13 @@ app.post('/send-notification', async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     console.log('Notification error:', e.message);
-    res.json({ success: false, error: e.message });
+    res.status(401).json({ success: false, error: 'Auth failed' });
   }
 });
 
 // In-memory rate limiting: phone -> { count, firstRequest }
 const otpRateMap = new Map();
+const adminClaimAttempts = new Map();
 const ATTEMPT_LIMIT = 3; // max failed attempts per code
 
 function normalizePhone(num) {
@@ -361,8 +381,25 @@ app.post('/set-admin-claim', async (req, res) => {
   if (!process.env.ADMIN_SECRET) {
     return res.json({ success: false, error: 'ADMIN_SECRET not set' });
   }
+  // Rate limit: max 3 attempts per IP per hour
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const entry = adminClaimAttempts.get(ip);
+  if (entry) {
+    if (now - entry.firstAttempt < 60 * 60 * 1000) {
+      if (entry.count >= 3) {
+        const retryAfter = Math.ceil((60 * 60 * 1000 - (now - entry.firstAttempt)) / 1000 / 60);
+        return res.status(429).json({ success: false, error: `محاولات كثيرة، حاول بعد ${retryAfter} دقيقة` });
+      }
+      entry.count++;
+    } else {
+      adminClaimAttempts.set(ip, { count: 1, firstAttempt: now });
+    }
+  } else {
+    adminClaimAttempts.set(ip, { count: 1, firstAttempt: now });
+  }
   if (secret !== process.env.ADMIN_SECRET) {
-    return res.json({ success: false, error: 'Unauthorized' });
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
   try {
     await admin.auth().setCustomUserClaims(uid, { admin: true });

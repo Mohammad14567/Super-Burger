@@ -296,12 +296,18 @@ const [adminOrders, setAdminOrders] = React.useState([]);
     Animated.parallel(anims).start();
   }, []);
 
-const registerFCMToken = async (phone) => {
+  const registerFCMToken = async (phone) => {
     if (!phone || phone === '00000000') {
       console.log('No valid phone number for token registration');
       return;
     }
     try {
+      const currentUser = auth().currentUser;
+      if (!currentUser) {
+        console.log('No auth user, skipping token registration');
+        return;
+      }
+      const idToken = await currentUser.getIdToken();
       const token = await getToken(messagingInstance);
       console.log('FCM Token:', token);
       if (!token) {
@@ -313,7 +319,7 @@ const registerFCMToken = async (phone) => {
       const res = await fetch(SERVER_URL + '/register-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, phone: normalizedPhone })
+        body: JSON.stringify({ token, phone: normalizedPhone, idToken })
       });
       const data = await res.json();
       console.log('Token registered:', data);
@@ -330,10 +336,16 @@ const registerFCMToken = async (phone) => {
 
   const sendPushNotification = async (phone, title, body) => {
     try {
+      const currentUser = auth().currentUser;
+      if (!currentUser) {
+        showToast('سجل دخول أولاً');
+        return;
+      }
+      const idToken = await currentUser.getIdToken();
       await fetch(SERVER_URL + '/send-notification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, title, body })
+        body: JSON.stringify({ phone, title, body, idToken })
       });
       showToast('تم إرسال الإشعار!');
     } catch(e) {
@@ -495,6 +507,26 @@ const registerFCMToken = async (phone) => {
 
   const toastTimeout = React.useRef(null);
   const loginTimeout = React.useRef(null);
+  const normalizePhone = (raw) => {
+    if (!raw) return '';
+    const digits = String(raw).replace(/[^0-9]/g, '');
+    if (digits.length < 9) return '';
+    if (raw.startsWith('+')) return raw;
+    if (raw.startsWith('00')) return '+' + digits.slice(2);
+    if (digits.startsWith('0')) return '+970' + digits.slice(1);
+    if (digits.startsWith('970')) return '+' + digits;
+    return '+970' + digits;
+  };
+
+  const isValidPhone = (raw) => {
+    const digits = String(raw || '').replace(/[^0-9]/g, '');
+    return digits.length >= 9 && digits.length <= 13;
+  };
+
+  const isValidPassword = (pw) => {
+    return typeof pw === 'string' && pw.length >= 6;
+  };
+
   const showToast = (msg) => {
     setToast(msg);
     if (toastTimeout.current) clearTimeout(toastTimeout.current);
@@ -507,12 +539,22 @@ const registerFCMToken = async (phone) => {
       setAuthError('املأ جميع الحقول');
       return;
     }
+    if (!isValidPhone(authPhone)) {
+      setAuthError('رقم الهاتف غير صحيح (9-13 رقم)');
+      return;
+    }
+    if (!isValidPassword(authPassword)) {
+      setAuthError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      return;
+    }
+    const normalizedPhone = normalizePhone(authPhone);
     try {
-      const email = authPhone + '@app.superburger';
+      const email = normalizedPhone + '@app.superburger';
       const userCredential = await auth().createUserWithEmailAndPassword(email, authPassword);
       await setDoc(doc(db, 'users', userCredential.user.uid), {
         name: authName,
-        phone: authPhone,
+        phone: normalizedPhone,
+        email,
         role: 'user',
         createdAt: new Date().toISOString(),
         loyaltyPoints: 0,
@@ -520,7 +562,7 @@ const registerFCMToken = async (phone) => {
       });
       const idTokenResult = await userCredential.user.getIdTokenResult(true);
       const isAdminUser = idTokenResult.claims.admin === true;
-      setCurrentUser({ uid: userCredential.user.uid, name: authName, phone: authPhone, role: isAdminUser ? 'admin' : 'user' });
+      setCurrentUser({ uid: userCredential.user.uid, name: authName, phone: normalizedPhone, role: isAdminUser ? 'admin' : 'user' });
       setIsAdmin(isAdminUser);
       setShowAuthModal(false);
       setAuthPassword('');
@@ -528,7 +570,7 @@ const registerFCMToken = async (phone) => {
       setAuthPhone('');
       setAuthError('');
       showToast('✅ تم التسجيل!');
-      registerFCMToken(authPhone);
+      registerFCMToken(normalizedPhone);
     } catch(e) {
       setAuthError(e.message.includes('email-already-in-use') ? 'رقم الهاتف مسجل مسبقاً' : 'خطأ: ' + e.message);
     }
@@ -627,16 +669,21 @@ const registerFCMToken = async (phone) => {
       setAuthError('املأ رقم الهاتف وكلمة المرور');
       return;
     }
+    if (!isValidPhone(authPhone)) {
+      setAuthError('رقم الهاتف غير صحيح');
+      return;
+    }
+    const normalizedPhone = normalizePhone(authPhone);
     try {
-      const phoneEmail = authPhone + '@app.superburger';
+      const phoneEmail = normalizedPhone + '@app.superburger';
       let userCredential;
       try {
         userCredential = await auth().signInWithEmailAndPassword(phoneEmail, authPassword);
       } catch(e) {
         const code = e.code || e.message || '';
         console.log('Login first attempt error:', code);
-        if (code.includes('user-not-found')) {
-          const q = query(collection(db, 'users'), where('phone', '==', authPhone));
+        if (code.includes('user-not-found') || code.includes('invalid-credential')) {
+          const q = query(collection(db, 'users'), where('phone', '==', normalizedPhone));
           const snap = await getDocs(q);
           if (!snap.empty) {
             const userData = snap.docs[0].data();
@@ -666,7 +713,7 @@ const registerFCMToken = async (phone) => {
       setAuthPhone('');
       setAuthError('');
       showToast(isAdminUser ? '✅ مرحباً يا مدير!' : '✅ مرحباً ' + (userData?.name || ''));
-      registerFCMToken(userData?.phone || authPhone);
+      registerFCMToken(userData?.phone || normalizedPhone);
     } catch(e) {
       const code = e.code || e.message || '';
       console.log('Login error:', code);
@@ -1907,10 +1954,11 @@ const registerFCMToken = async (phone) => {
                   // Send push notification instead of WhatsApp
                   const body = `طلبك سيتم تجهيزه خلال ${time} ${timeWord} - سوبر برجر 🍔`;
                   try {
+                    const adminToken = await auth().currentUser?.getIdToken();
                     const res = await fetch(SERVER_URL + '/send-notification', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ token: order.fcmToken || null, phone: order.phone, title: '📦 سوبر برجر', body })
+                      body: JSON.stringify({ token: order.fcmToken || null, phone: order.phone, title: '📦 سوبر برجر', body, idToken: adminToken })
                     });
                     const data = await res.json();
                     showToast(data.success ? '✅ تم إرسال الإشعار!' : '❌ فشل');
@@ -1983,10 +2031,11 @@ const registerFCMToken = async (phone) => {
                   await updateDoc(doc(db, 'orders', confirmData.order.id), { status: 'completed', completedAt: new Date().toISOString() });
                   setAdminOrders(adminOrders.filter(o => o.id !== confirmData.order.id));
                   if (confirmData.order.fcmToken || confirmData.order.phone) {
+                    const adminToken = await auth().currentUser?.getIdToken();
                     const notifRes = await fetch(SERVER_URL + '/send-notification', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ token: confirmData.order.fcmToken || null, phone: confirmData.order.phone || null, title: 'سوبر برجر', body: 'طلبك جاهز! تعال استلمه الآن 🍔' })
+                      body: JSON.stringify({ token: confirmData.order.fcmToken || null, phone: confirmData.order.phone || null, title: 'سوبر برجر', body: 'طلبك جاهز! تعال استلمه الآن 🍔', idToken: adminToken })
                     });
                     const notifData_result = await notifRes.json();
                     showToast(notifData_result.success ? '✅ تم إرسال الإشعار!' : '❌ فشل');
