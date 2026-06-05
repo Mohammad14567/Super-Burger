@@ -558,7 +558,8 @@ const [adminOrders, setAdminOrders] = React.useState([]);
         role: 'user',
         createdAt: new Date().toISOString(),
         loyaltyPoints: 0,
-        loyaltySpentAwarded: 0
+        loyaltySpentAwarded: 0,
+        verifiedForOrdering: false
       });
       const idTokenResult = await userCredential.user.getIdTokenResult(true);
       const isAdminUser = idTokenResult.claims.admin === true;
@@ -930,36 +931,36 @@ const [adminOrders, setAdminOrders] = React.useState([]);
         showToast('خطأ: حساب المستخدم غير موجود');
         return;
       }
+      // Already verified (OTP completed previously)
       if (userData.verifiedForOrdering) {
         setShowConfirmOrderModal(true);
-      } else {
-        if (!currentUser.phone) {
-          showToast('خطأ: رقم الهاتف غير مسجل');
-          return;
+        return;
+      }
+      // First order — OTP is REQUIRED
+      if (!currentUser.phone) {
+        showToast('خطأ: رقم الهاتف غير مسجل');
+        return;
+      }
+      setOrderOtpPending(true);
+      setPhoneNumber(currentUser.phone);
+      setPhoneStep('enterPhone');
+      try {
+        const res = await fetch(`${SERVER_URL}/send-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: currentUser.phone }),
+          signal: AbortSignal.timeout(8000)
+        });
+        const data = await res.json();
+        if (data.success) {
+          setPhoneStep('enterCode');
+          setOtpError('');
+        } else {
+          throw new Error(data.error || 'OTP failed');
         }
-          // Try OTP — if server is down, skip verification
-        setOrderOtpPending(true);
-        setPhoneNumber(currentUser.phone);
-        setPhoneStep('enterPhone');
-        try {
-          const res = await fetch(`${SERVER_URL}/send-otp`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone: currentUser.phone }),
-            signal: AbortSignal.timeout(8000)
-          });
-          const data = await res.json();
-          if (data.success) {
-            setPhoneStep('enterCode');
-            setOtpError('');
-          } else {
-            throw new Error(data.error || 'OTP failed');
-          }
-        } catch(e) {
-          setPhoneStep('');
-          setOrderOtpPending(false);
-          setShowConfirmOrderModal(true);
-        }
+      } catch(e) {
+        setOtpError('خدمة التحقق من الهاتف غير متاحة، حاول لاحقاً');
+        showToast('⚠️ التحقق من الهاتف مطلوب، حاول لاحقاً');
       }
     } catch(e) {
       showToast('خطأ: ' + e.message);
@@ -2400,10 +2401,10 @@ const styles = StyleSheet.create({
   loyaltyHowStepTitle: { fontSize: 14, fontWeight: '800', color: '#fff', marginBottom: 2 },
   loyaltyHowStepDesc: { fontSize: 11, color: COLORS.textMuted },
   loyaltyProgressCard: { marginHorizontal: 16, marginTop: 12, backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: '#2a2418', padding: 20 },
-  loyaltyProgressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  loyaltyProgressRight: { alignItems: 'flex-end', flex: 1 },
-  loyaltyProgressTitle: { fontSize: 16, fontWeight: '900', color: '#fff', textAlign: 'right' },
-  loyaltyProgressSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 2, textAlign: 'right' },
+  loyaltyProgressHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  loyaltyProgressRight: { alignItems: 'flex-end', flex: 1, paddingLeft: 12 },
+  loyaltyProgressTitle: { fontSize: 16, fontWeight: '900', color: '#fff', textAlign: 'right', writingDirection: 'rtl' },
+  loyaltyProgressSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 4, textAlign: 'right', writingDirection: 'rtl', lineHeight: 16 },
   loyaltyProgressIconWrap: { width: 40, height: 40, backgroundColor: COLORS.bg, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#333' },
   loyaltyProgressDivider: { height: 1, backgroundColor: '#2a2418', marginVertical: 14 },
   loyaltyProgressRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
