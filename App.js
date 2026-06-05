@@ -558,7 +558,9 @@ const [adminOrders, setAdminOrders] = React.useState([]);
         role: 'user',
         createdAt: new Date().toISOString(),
         loyaltyPoints: 0,
-        loyaltySpentAwarded: 0
+        loyaltySpentAwarded: 0,
+        firstOrderCompleted: false,
+        verifiedForOrdering: false
       });
       const idTokenResult = await userCredential.user.getIdTokenResult(true);
       const isAdminUser = idTokenResult.claims.admin === true;
@@ -863,6 +865,12 @@ const [adminOrders, setAdminOrders] = React.useState([]);
         });
         const data = await res.json();
         if (data.success) {
+          if (currentUser?.uid) {
+            try {
+              await updateDoc(doc(db, 'users', currentUser.uid), { firstOrderCompleted: true });
+              setCurrentUser(prev => ({ ...prev, firstOrderCompleted: true }));
+            } catch(e) { console.log('First order flag error:', e.message); }
+          }
           showToast('✅ تم إرسال الطلب!');
           setCouponApplied(false);
           setAppliedCouponId(null);
@@ -894,6 +902,13 @@ const [adminOrders, setAdminOrders] = React.useState([]);
         status: 'pending',
         createdAt: new Date().toISOString()
       });
+      // Mark first order as completed so subsequent orders require OTP
+      if (currentUser?.uid) {
+        try {
+          await updateDoc(doc(db, 'users', currentUser.uid), { firstOrderCompleted: true });
+          setCurrentUser(prev => ({ ...prev, firstOrderCompleted: true }));
+        } catch(e) { console.log('First order flag error:', e.message); }
+      }
       showToast('✅ تم إرسال الطلب!');
       if (couponApplied && appliedCouponId) {
         try {
@@ -930,14 +945,18 @@ const [adminOrders, setAdminOrders] = React.useState([]);
         showToast('خطأ: حساب المستخدم غير موجود');
         return;
       }
+      // Already verified (OTP completed previously)
       if (userData.verifiedForOrdering) {
         setShowConfirmOrderModal(true);
-      } else {
+        return;
+      }
+      // First order — allow without OTP, but mark user as needing verification next time
+      if (userData.firstOrderCompleted === true) {
+        // Second+ order — OTP is required, can't skip
         if (!currentUser.phone) {
           showToast('خطأ: رقم الهاتف غير مسجل');
           return;
         }
-          // Try OTP — if server is down, skip verification
         setOrderOtpPending(true);
         setPhoneNumber(currentUser.phone);
         setPhoneStep('enterPhone');
@@ -956,11 +975,13 @@ const [adminOrders, setAdminOrders] = React.useState([]);
             throw new Error(data.error || 'OTP failed');
           }
         } catch(e) {
-          setPhoneStep('');
-          setOrderOtpPending(false);
-          setShowConfirmOrderModal(true);
+          setOtpError('خدمة التحقق من الهاتف غير متاحة، حاول لاحقاً');
+          showToast('⚠️ التحقق من الهاتف مطلوب للطلب الثاني، حاول لاحقاً');
         }
+        return;
       }
+      // First order — go directly to confirm (no OTP)
+      setShowConfirmOrderModal(true);
     } catch(e) {
       showToast('خطأ: ' + e.message);
     }
