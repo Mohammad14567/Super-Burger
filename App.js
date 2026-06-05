@@ -24,6 +24,17 @@ Notifications.setNotificationHandler({
   }),
 });
 
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 const COLORS = {
   gold: '#F5C518',
   goldDark: '#D4A017',
@@ -547,12 +558,11 @@ const [adminOrders, setAdminOrders] = React.useState([]);
     const phone = num.startsWith('+') ? num : num.startsWith('00') ? '+' + num.slice(2) : '+970' + digits.replace(/^0+/, '');
     setVerificationId(phone);
     try {
-      const res = await fetch(`${SERVER_URL}/send-otp`, {
+      const res = await fetchWithTimeout(`${SERVER_URL}/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
-        signal: AbortSignal.timeout(15000)
-      });
+        body: JSON.stringify({ phone })
+      }, 45000);
       const data = await res.json();
       if (data.success) {
         setPhoneStep('enterCode');
@@ -581,12 +591,11 @@ const [adminOrders, setAdminOrders] = React.useState([]);
       return;
     }
     try {
-      const res = await fetch(`${SERVER_URL}/verify-otp`, {
+      const res = await fetchWithTimeout(`${SERVER_URL}/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: verificationId, code: verificationCode }),
-        signal: AbortSignal.timeout(15000)
-      });
+        body: JSON.stringify({ phone: verificationId, code: verificationCode })
+      }, 45000);
       const data = await res.json();
       if (data.success) {
         setPhoneStep('success');
@@ -902,12 +911,11 @@ const [adminOrders, setAdminOrders] = React.useState([]);
       setPhoneNumber(currentUser.phone);
       setPhoneStep('enterPhone');
       try {
-        const res = await fetch(`${SERVER_URL}/send-otp`, {
+        const res = await fetchWithTimeout(`${SERVER_URL}/send-otp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: currentUser.phone }),
-          signal: AbortSignal.timeout(8000)
-        });
+          body: JSON.stringify({ phone: currentUser.phone })
+        }, 45000);
         const data = await res.json();
         if (data.success) {
           setPhoneStep('enterCode');

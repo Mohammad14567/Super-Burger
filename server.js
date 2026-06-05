@@ -61,27 +61,101 @@ app.get('/', (req, res) => {
 
 let db = null;
 
-const FIREBASE_PRIVATE_KEY = process.env.FIREBASE_PRIVATE_KEY || '';
-if (FIREBASE_PRIVATE_KEY) {
-  const serviceAccount = {
-    project_id: process.env.FIREBASE_PROJECT_ID || 'superburger-2570b',
-    client_email: process.env.FIREBASE_CLIENT_EMAIL || 'firebase-adminsdk-fbsvc@superburger-2570b.iam.gserviceaccount.com',
-    private_key: FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-  };
-  try {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-    db = admin.firestore();
-    console.log('Firebase initialized successfully');
-  } catch(e) {
-    console.log('Firebase init error:', e.message);
+// Try multiple ways to initialize Firebase
+function initializeFirebase() {
+  // Debug: log which env vars are present (without exposing secrets)
+  console.log('🔧 Environment check:');
+  console.log('  FIREBASE_PRIVATE_KEY present:', !!process.env.FIREBASE_PRIVATE_KEY);
+  console.log('  FIREBASE_PRIVATE_KEY length:', process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.length : 0);
+  console.log('  FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID || '(not set)');
+  console.log('  FIREBASE_CLIENT_EMAIL present:', !!process.env.FIREBASE_CLIENT_EMAIL);
+  console.log('  TWILIO_ACCOUNT_SID present:', !!process.env.TWILIO_ACCOUNT_SID);
+  console.log('  TWILIO_AUTH_TOKEN present:', !!process.env.TWILIO_AUTH_TOKEN);
+
+  const FIREBASE_PRIVATE_KEY = process.env.FIREBASE_PRIVATE_KEY || '';
+
+  if (!FIREBASE_PRIVATE_KEY) {
+    console.log('⚠️ FIREBASE_PRIVATE_KEY not set, Firebase disabled');
+    return null;
   }
-} else {
-  console.log('⚠️ FIREBASE_PRIVATE_KEY not set, Firebase disabled');
+
+  // Try multiple key formats
+  const keyFormats = [];
+
+  // Format 1: As-is (might have actual newlines from Render)
+  keyFormats.push(FIREBASE_PRIVATE_KEY);
+
+  // Format 2: Replace escaped \n with real newlines
+  if (FIREBASE_PRIVATE_KEY.includes('\\n')) {
+    keyFormats.push(FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'));
+  }
+
+  // Format 3: Replace spaces with newlines (sometimes Render converts \n to space)
+  if (FIREBASE_PRIVATE_KEY.includes(' -----END')) {
+    keyFormats.push(FIREBASE_PRIVATE_KEY.replace(/ (?=-----)/g, '\n'));
+  }
+
+  // Format 4: If key has literal spaces instead of newlines
+  const spacedKey = FIREBASE_PRIVATE_KEY.replace(/\s+/g, ' ').replace(/ -----/g, '\n-----').replace(/-----BEGIN /g, '-----BEGIN ');
+  if (spacedKey !== FIREBASE_PRIVATE_KEY) {
+    keyFormats.push(spacedKey);
+  }
+
+  // Format 5: Base64 encoded key
+  try {
+    const decoded = Buffer.from(FIREBASE_PRIVATE_KEY, 'base64').toString('utf8');
+    if (decoded.startsWith('-----BEGIN PRIVATE KEY-----')) {
+      keyFormats.push(decoded);
+      console.log('  Found Base64 encoded key, decoded successfully');
+    }
+  } catch(e) {
+    // Not Base64, ignore
+  }
+
+  for (let i = 0; i < keyFormats.length; i++) {
+    try {
+      const serviceAccount = {
+        project_id: process.env.FIREBASE_PROJECT_ID || 'superburger-2570b',
+        client_email: process.env.FIREBASE_CLIENT_EMAIL || 'firebase-adminsdk-fbsvc@superburger-2570b.iam.gserviceaccount.com',
+        private_key: keyFormats[i]
+      };
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log('✅ Firebase initialized successfully (format ' + (i + 1) + ')');
+      return admin.firestore();
+    } catch(e) {
+      console.log('❌ Firebase format ' + (i + 1) + ' failed:', e.message.substring(0, 100));
+    }
+  }
+
+  console.log('⚠️ All Firebase initialization attempts failed');
+  return null;
 }
 
-app.get('/', (req, res) => res.json({ status: 'running', endpoints: ['/send-otp', '/verify-otp', '/send-notification', '/register-token'] }));
+db = initializeFirebase();
+
+app.get('/', (req, res) => res.json({
+  status: 'running',
+  firebaseConfigured: !!db,
+  endpoints: ['/send-otp', '/verify-otp', '/send-notification', '/register-token']
+}));
+
+// Diagnostic endpoint to check env var format (no secrets exposed)
+app.get('/debug-env', (req, res) => {
+  const key = process.env.FIREBASE_PRIVATE_KEY || '';
+  res.json({
+    hasKey: !!key,
+    keyLength: key.length,
+    startsWith: key.substring(0, 30),
+    endsWith: key.substring(Math.max(0, key.length - 30)),
+    hasActualNewlines: key.includes('\n'),
+    hasEscapedNewlines: key.includes('\\n'),
+    hasSpaces: key.includes(' '),
+    newlineCount: (key.match(/\n/g) || []).length,
+    firebaseInitialized: !!db
+  });
+});
 
 app.get('/delete-account', (req, res) => {
   res.send(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>حذف الحساب</title><style>body{font-family:sans-serif;background:#111;color:#fff;max-width:600px;margin:50px auto;padding:20px;line-height:1.8}h1{color:#d4a54a}a{color:#d4a54a}</style></head><body><h1>حذف الحساب - سوبر برجر</h1><p>لحذف حسابك وبياناتك الشخصية نهائياً من تطبيق سوبر برجر، يرجى التواصل عبر واتساب:</p><p><a href="https://wa.me/970593221500">📱 واتساب: 0593221500</a></p><p>سيتم حذف الحساب وجميع البيانات خلال 7 أيام عمل.</p></body></html>`);
