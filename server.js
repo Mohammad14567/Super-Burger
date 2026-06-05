@@ -356,5 +356,22 @@ app.post('/send-order-sms', async (req, res) => {
   }
 });
 
+app.post('/set-admin-claim', async (req, res) => {
+  const { uid, secret } = req.body;
+  if (!process.env.ADMIN_SECRET) {
+    return res.json({ success: false, error: 'ADMIN_SECRET not set' });
+  }
+  if (secret !== process.env.ADMIN_SECRET) {
+    return res.json({ success: false, error: 'Unauthorized' });
+  }
+  try {
+    await admin.auth().setCustomUserClaims(uid, { admin: true });
+    res.json({ success: true, message: 'Admin claim set for ' + uid });
+  } catch(e) {
+    console.log('Set admin claim error:', e.message);
+    res.json({ success: false, error: e.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));

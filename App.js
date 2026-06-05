@@ -382,10 +382,15 @@ const registerFCMToken = async (phone) => {
     const unsubscribe = auth().onAuthStateChanged(async (user) => {
       if (user) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          const userData = userDoc.data();
-          const isAdminUser = userData?.role === 'admin';
-          setCurrentUser({ uid: user.uid, ...userData });
+          const idTokenResult = await user.getIdTokenResult();
+          const isAdminUser = idTokenResult.claims.admin === true;
+          try {
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            const userData = userDoc.data() || {};
+            setCurrentUser({ uid: user.uid, ...userData, role: isAdminUser ? 'admin' : 'user' });
+          } catch(e) {
+            setCurrentUser({ uid: user.uid, email: user.email, role: isAdminUser ? 'admin' : 'user' });
+          }
           setIsAdmin(isAdminUser);
         } catch(e) {
           setCurrentUser({ uid: user.uid, email: user.email });
@@ -513,7 +518,10 @@ const registerFCMToken = async (phone) => {
         loyaltyPoints: 0,
         loyaltySpentAwarded: 0
       });
-      setCurrentUser({ uid: userCredential.user.uid, name: authName, phone: authPhone, role: 'user' });
+      const idTokenResult = await userCredential.user.getIdTokenResult(true);
+      const isAdminUser = idTokenResult.claims.admin === true;
+      setCurrentUser({ uid: userCredential.user.uid, name: authName, phone: authPhone, role: isAdminUser ? 'admin' : 'user' });
+      setIsAdmin(isAdminUser);
       setShowAuthModal(false);
       setAuthPassword('');
       setAuthName('');
@@ -646,10 +654,11 @@ const registerFCMToken = async (phone) => {
           throw e;
         }
       }
+      const idTokenResult = await userCredential.user.getIdTokenResult(true);
+      const isAdminUser = idTokenResult.claims.admin === true;
       const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-      const userData = userDoc.data();
-      const isAdminUser = userData?.role === 'admin';
-      setCurrentUser({ uid: userCredential.user.uid, ...userData, role: userData?.role });
+      const userData = userDoc.data() || {};
+      setCurrentUser({ uid: userCredential.user.uid, ...userData, role: isAdminUser ? 'admin' : 'user' });
       setIsAdmin(isAdminUser);
       setShowAuthModal(false);
       setAuthPassword('');
