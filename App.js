@@ -14,7 +14,7 @@ const db = firestore();
 const messagingInstance = getMessaging();
 
 const { width } = Dimensions.get('window');
-const SERVER_URL = 'https://superresturantb.onrender.com';
+const SERVER_URL = 'https://super-burger.onrender.com';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
