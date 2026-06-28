@@ -1,10 +1,12 @@
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, ScrollView, Image, ImageBackground, TextInput, Dimensions, Animated, Linking, Platform, Alert, I18nManager, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, ScrollView, Image, ImageBackground, TextInput, Dimensions, Easing, FlatList, Pressable, Animated, Linking, Platform, Alert, I18nManager, ActivityIndicator } from 'react-native';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts } from 'expo-font';
 import * as AmiriFont from '@expo-google-fonts/amiri';
+import { Amiri_700Bold } from '@expo-google-fonts/amiri';
+import { Tajawal_400Regular, Tajawal_500Medium, Tajawal_700Bold, Tajawal_800ExtraBold, Tajawal_900Black } from '@expo-google-fonts/tajawal';
 import { getMessaging, requestPermission, getToken, AuthorizationStatus, onMessage, setBackgroundMessageHandler } from '@react-native-firebase/messaging';
 import * as Notifications from 'expo-notifications';
 import firestore, { collection, doc, addDoc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, increment } from '@react-native-firebase/firestore';
@@ -36,14 +38,27 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 }
 
 const COLORS = {
-  gold: '#F5C518',
-  goldDark: '#D4A017',
-  bg: '#0e0c0a',
-  card: '#1c1810',
+  gold: '#FFC107',
+  goldDark: '#E0A100',
+  bg: '#0B0A09',
+  card: '#1A1611',
+  surface: '#241D15',
+  accent: '#FF7A2F',
+  line: 'rgba(255,255,255,0.07)',
   text: '#fff',
-  textMuted: '#a89880',
-  red: '#e74c3c',
-  green: '#27ae60',
+  textMuted: '#A39A8B',
+  red: '#FF5A4D',
+  green: '#2ECC71',
+};
+
+// Premium Arabic type system (loaded via useFonts in App).
+const FONT = {
+  regular: 'Tajawal_400Regular',
+  medium: 'Tajawal_500Medium',
+  bold: 'Tajawal_700Bold',
+  extra: 'Tajawal_800ExtraBold',
+  black: 'Tajawal_900Black',
+  display: 'Amiri_700Bold',
 };
 
 const categories = [
@@ -54,11 +69,80 @@ const categories = [
   { key: 'drinks', label: 'مشروبات' },
 ];
 
+const FALLBACK_BURGER_IMAGES = [
+  require('./assets/burger1.png.jpg'),
+  require('./assets/burger2.png.jpg'),
+  require('./assets/burger3.png.jpg'),
+  require('./assets/burger4.png.jpg'),
+  require('./assets/burger5.png.jpg'),
+  require('./assets/burger6.png.jpg'),
+  require('./assets/burger7.png.jpg'),
+  require('./assets/burger8.png.jpg'),
+];
+
+const HomeFeaturedCard = React.memo(({ item, index, loginWarning }) => {
+  return (
+    <Pressable style={({ pressed }) => [styles.xFeatCard, pressed && { transform: [{ scale: 0.96 }] }]}>
+      <View style={styles.xFeatImageWrap}>
+        {item.image ? (
+          <Image source={{ uri: item.image }} style={styles.xFeatImage} />
+        ) : (
+          <View style={styles.xFeatPlaceholder}>
+            <Ionicons name="fast-food" size={36} color={COLORS.textMuted} />
+          </View>
+        )}
+        <View style={styles.xFeatScrim} />
+        <View style={styles.xFeatScrim2} />
+        <View style={styles.xFeatPrice}>
+          <Text style={styles.xFeatPriceTxt}>₪{item.price}</Text>
+        </View>
+        <View style={styles.xFeatNameWrap}>
+          <Text style={styles.xFeatName} numberOfLines={1}>{item.name}</Text>
+        </View>
+      </View>
+      {loginWarning && (
+        <View style={styles.loginWarningChip}>
+          <Ionicons name="alert-circle" size={12} color={COLORS.red} />
+          <Text style={styles.loginWarningText}>سجل دخول أولاً</Text>
+        </View>
+      )}
+    </Pressable>
+  );
+});
+
+const HomeSkeletonCard = () => {
+  const pulse = React.useRef(new Animated.Value(0.4)).current;
+  React.useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 750, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.4, duration: 750, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+  return (
+    <View style={styles.featuredCard}>
+      <Animated.View style={[styles.featuredImageWrap, styles.skeleton, { opacity: pulse }]} />
+      <Animated.View style={[styles.skeletonText, { width: 90, marginTop: 14, opacity: pulse }]} />
+      <Animated.View style={[styles.skeletonText, { width: 50, marginTop: 8, opacity: pulse }]} />
+    </View>
+  );
+};
 const ITEMS_PER_PAGE = 8;
 const activeOrders = [];
 const pastOrders = [];
 
 export default function App() {
+  const [fontsLoaded, fontError] = useFonts({
+    Tajawal_400Regular,
+    Tajawal_500Medium,
+    Tajawal_700Bold,
+    Tajawal_800ExtraBold,
+    Tajawal_900Black,
+    Amiri_700Bold,
+  });
   const [activeTab, setActiveTab] = React.useState('home');
   const [selectedCat, setSelectedCat] = React.useState('all');
   const [menuCat, setMenuCat] = React.useState('all');
@@ -67,14 +151,17 @@ export default function App() {
   const [cartCount, setCartCount] = React.useState(0);
   const [cartTotal, setCartTotal] = React.useState(0);
   const [cartItems, setCartItems] = React.useState([]);
+  React.useEffect(() => {
+    AsyncStorage.getItem('cartItems').then(saved => {
+      if (saved) setCartItems(JSON.parse(saved));
+    }).catch(() => {});
+  }, []);
+  React.useEffect(() => {
+    AsyncStorage.setItem('cartItems', JSON.stringify(cartItems)).catch(() => {});
+  }, [cartItems]);
   const [toast, setToast] = React.useState('');
   const [notifData, setNotifData] = React.useState(null);
   const [confirmData, setConfirmData] = React.useState(null);
-  const [phoneNumber, setPhoneNumber] = React.useState('');
-  const [verificationCode, setVerificationCode] = React.useState('');
-  const [verificationId, setVerificationId] = React.useState(null);
-  const [phoneStep, setPhoneStep] = React.useState('success'); // 'enterPhone' | 'enterCode' | 'success'
-  const [otpSending, setOtpSending] = React.useState(false);
   const [showMenuModal, setShowMenuModal] = React.useState(false);
   
 const [showSearch, setShowSearch] = React.useState(false);
@@ -91,9 +178,14 @@ const [showSearch, setShowSearch] = React.useState(false);
   const [couponError, setCouponError] = React.useState(false);
   const [couponApplied, setCouponApplied] = React.useState(false);
   const [cop1Float, setCop1Float] = React.useState(new Animated.Value(0));
+  const homeShimmer = React.useRef(new Animated.Value(0)).current;
+  const homeFloat = React.useRef(new Animated.Value(0)).current;
 
   const [coupons, setCoupons] = React.useState([]);
   const [appliedCouponId, setAppliedCouponId] = React.useState(null);
+  React.useEffect(() => {
+    AsyncStorage.setItem('appliedCouponId', JSON.stringify(appliedCouponId)).catch(() => {});
+  }, [appliedCouponId]);
   const [showAddCoupon, setShowAddCoupon] = React.useState(false);
   const [newCouponCode, setNewCouponCode] = React.useState('');
   const [newCouponDiscount, setNewCouponDiscount] = React.useState('');
@@ -107,7 +199,7 @@ const [showSearch, setShowSearch] = React.useState(false);
   const statOpacity = React.useRef([0, 1, 2].map(() => new Animated.Value(0))).current;
   const heroAnim = React.useRef(new Animated.Value(0)).current;
   const sectionAnims = React.useRef([0,1,2,3,4,5].map(() => new Animated.Value(0))).current;
-  const [galleryImages, setGalleryImages] = React.useState({ main: null, small1: null, small2: null, hero: null });
+  const [galleryImages, setGalleryImages] = React.useState({ main: null, small1: null, small2: null, hero: null, mainLabel: '🔥 الأكثر طلباً', small1Label: '⭐ مميز', small2Label: '🆕 جديد' });
   const [mgmtView, setMgmtView] = React.useState(null);
   const [newItemImage, setNewItemImage] = React.useState('');
 
@@ -128,7 +220,7 @@ const [showSearch, setShowSearch] = React.useState(false);
   const [showMenuManagement, setShowMenuManagement] = React.useState(false);
   const [loginWarningItemId, setLoginWarningItemId] = React.useState(null);
   const [authError, setAuthError] = React.useState('');
-  const [otpError, setOtpError] = React.useState('');
+
   const [editingItem, setEditingItem] = React.useState(null);
   const [newItemName, setNewItemName] = React.useState('');
   const [newItemDesc, setNewItemDesc] = React.useState('');
@@ -141,9 +233,16 @@ const [showSearch, setShowSearch] = React.useState(false);
 const [adminOrders, setAdminOrders] = React.useState([]);
   const [showAdminNotification, setShowAdminNotification] = React.useState(false);
   const [orderPrepTimes, setOrderPrepTimes] = React.useState({});
-  const [orderOtpPending, setOrderOtpPending] = React.useState(false);
+
 
   const [showConfirmOrderModal, setShowConfirmOrderModal] = React.useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = React.useState(false);
+  const [deletePassword, setDeletePassword] = React.useState('');
+  const [deleteReason, setDeleteReason] = React.useState('');
+  const [showOtpModal, setShowOtpModal] = React.useState(false);
+  const [otpCode, setOtpCode] = React.useState('');
+  const [otpSent, setOtpSent] = React.useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = React.useState(false);
 
   
 
@@ -157,6 +256,11 @@ const [adminOrders, setAdminOrders] = React.useState([]);
         const snap = await getDocs(collection(db, 'coupons'));
         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setCoupons(list);
+        const savedCouponId = await AsyncStorage.getItem('appliedCouponId');
+        if (savedCouponId && list.find(c => c.id === savedCouponId && c.active !== false)) {
+          setAppliedCouponId(savedCouponId);
+          setCouponApplied(true);
+        }
       } catch(e) {
         console.log('Init coupons error:', e);
       }
@@ -251,6 +355,17 @@ const [adminOrders, setAdminOrders] = React.useState([]);
       Animated.spring(val, { toValue: 1, friction: 4, tension: 40, delay: i * 200, useNativeDriver: true })
     );
     Animated.parallel(anims).start();
+  }, []);
+React.useEffect(() => {
+    Animated.loop(
+      Animated.timing(homeShimmer, { toValue: 1, duration: 2200, easing: Easing.linear, useNativeDriver: true })
+    ).start();
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(homeFloat, { toValue: 1, duration: 1600, useNativeDriver: true }),
+        Animated.timing(homeFloat, { toValue: 0, duration: 1600, useNativeDriver: true }),
+      ])
+    ).start();
   }, []);
 
   React.useEffect(() => {
@@ -502,6 +617,7 @@ const [adminOrders, setAdminOrders] = React.useState([]);
   };
 
   const handleRegister = async () => {
+    if (currentUser) { setShowAuthModal(false); return; }
     setAuthError('');
     if (!authPhone || !authPassword || !authName) {
       setAuthError('املأ جميع الحقول');
@@ -524,14 +640,14 @@ const [adminOrders, setAdminOrders] = React.useState([]);
         phone: normalizedPhone,
         email,
         role: 'user',
+        verifiedForOrdering: false,
         createdAt: new Date().toISOString(),
         loyaltyPoints: 0,
-        loyaltySpentAwarded: 0,
-        verifiedForOrdering: false
+        loyaltySpentAwarded: 0
       });
       const idTokenResult = await userCredential.user.getIdTokenResult(true);
       const isAdminUser = idTokenResult.claims.admin === true;
-      setCurrentUser({ uid: userCredential.user.uid, name: authName, phone: normalizedPhone, role: isAdminUser ? 'admin' : 'user' });
+      setCurrentUser({ uid: userCredential.user.uid, name: authName, phone: normalizedPhone, role: isAdminUser ? 'admin' : 'user', verifiedForOrdering: false });
       setIsAdmin(isAdminUser);
       setShowAuthModal(false);
       setAuthPassword('');
@@ -545,92 +661,8 @@ const [adminOrders, setAdminOrders] = React.useState([]);
     }
   };
 
-  const sendVerificationCode = async (phoneParam) => {
-    setOtpError('');
-    setOtpSending(true);
-    const num = phoneParam || phoneNumber;
-    const digits = num.replace(/[^0-9]/g, '');
-    if (digits.length < 9) {
-      setOtpError('أدخل رقم الهاتف صحيح');
-      setOtpSending(false);
-      return;
-    }
-    const phone = num.startsWith('+') ? num : num.startsWith('00') ? '+' + num.slice(2) : '+970' + digits.replace(/^0+/, '');
-    setVerificationId(phone);
-    try {
-      const res = await fetchWithTimeout(`${SERVER_URL}/send-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone })
-      }, 45000);
-      const data = await res.json();
-      if (data.success) {
-        setPhoneStep('enterCode');
-        setOtpError('');
-      } else {
-        setOtpError(data.error || 'فشل الإرسال');
-      }
-    } catch(e) {
-      console.log('Send OTP error:', e.message);
-      if (e.name?.includes('Timeout') || e.name?.includes('Abort') || e.message?.includes('Network') || e.message?.includes('network')) {
-        setOtpError('السيرفر غير متاح، تحقق من اتصالك وحاول مرة أخرى');
-      } else {
-        setOtpError('فشل الاتصال بالسيرفر');
-      }
-    } finally {
-      setOtpSending(false);
-    }
-  };
-
-  const verifyCode = async () => {
-    setOtpError('');
-    setOtpSending(true);
-    if (!verificationCode || verificationCode.length < 6) {
-      setOtpError('أدخل الكود المكون من 6 أرقام');
-      setOtpSending(false);
-      return;
-    }
-    try {
-      const res = await fetchWithTimeout(`${SERVER_URL}/verify-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: verificationId, code: verificationCode })
-      }, 45000);
-      const data = await res.json();
-      if (data.success) {
-        setPhoneStep('success');
-        setVerificationCode('');
-        setOtpError('');
-        if (orderOtpPending && currentUser) {
-          setOrderOtpPending(false);
-          if (cartItems.length === 0) {
-            showToast('السلة فارغة');
-            return;
-          }
-          try {
-            await updateDoc(doc(db, 'users', currentUser.uid), { verifiedForOrdering: true });
-            setCurrentUser({ ...currentUser, verifiedForOrdering: true });
-            await placeOrder();
-          } catch(e) {
-            showToast('خطأ: ' + e.message);
-          }
-        }
-      } else {
-        setOtpError('الكود غير صحيح');
-      }
-    } catch(e) {
-      console.log('Verify error:', e.message);
-      if (e.name?.includes('Timeout') || e.name?.includes('Abort') || e.message?.includes('Network') || e.message?.includes('network')) {
-        setOtpError('السيرفر غير متاح، تحقق من اتصالك وحاول مرة أخرى');
-      } else {
-        setOtpError('فشل الاتصال بالسيرفر');
-      }
-    } finally {
-      setOtpSending(false);
-    }
-  };
-
   const handleLogin = async () => {
+    if (currentUser) { setShowAuthModal(false); return; }
     setAuthError('');
     if (!authPhone || !authPassword) {
       setAuthError('املأ رقم الهاتف وكلمة المرور');
@@ -696,9 +728,48 @@ const [adminOrders, setAdminOrders] = React.useState([]);
     try {
       await auth().signOut();
       setCurrentUser(null);
+      setCouponApplied(false);
+      setAppliedCouponId(null);
       showToast('✅ تم تسجيل الخروج');
     } catch(e) {
       showToast('خطأ: ' + e.message);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deletePassword) { showToast('❌ أدخل كلمة المرور'); return; }
+    let deleted = false;
+    try {
+      const user = auth().currentUser;
+      if (!user) { showToast('❌ لا يوجد مستخدم'); return; }
+      const phone = currentUser?.phone || '';
+      if (!phone) { showToast('❌ لا يوجد رقم هاتف'); return; }
+      const phoneEmail = phone + '@app.superburger';
+      const credential = auth.EmailAuthProvider.credential(phoneEmail, deletePassword);
+      await user.reauthenticateWithCredential(credential);
+      if (deleteReason.trim()) {
+        await addDoc(collection(db, 'deletion_reasons'), { reason: deleteReason.trim(), phone, uid: user.uid, deletedAt: new Date().toISOString() });
+      }
+      await deleteDoc(doc(db, 'users', user.uid));
+      await user.delete();
+      deleted = true;
+      showToast('✅ تم حذف الحساب');
+    } catch(e) {
+      if (e.code === 'auth/wrong-password') {
+        showToast('❌ كلمة المرور خطأ');
+      } else if (e.code === 'auth/requires-recent-login') {
+        showToast('❌ سجل خروج ثم دخول وحاول مجدداً');
+      } else {
+        showToast('خطأ: ' + e.message);
+      }
+    } finally {
+      setDeletePassword('');
+      setDeleteReason('');
+      setShowDeleteAccountModal(false);
+      if (deleted) {
+        setCurrentUser(null);
+        try { await auth().signOut(); } catch(_) {}
+      }
     }
   };
 
@@ -897,38 +968,78 @@ const [adminOrders, setAdminOrders] = React.useState([]);
         showToast('خطأ: حساب المستخدم غير موجود');
         return;
       }
-      // Already verified (OTP completed previously)
-      if (userData.verifiedForOrdering) {
+      const hasOrderedBefore = await hasUserOrdered(currentUser.uid);
+      if (userData.verifiedForOrdering === true || hasOrderedBefore) {
         setShowConfirmOrderModal(true);
-        return;
-      }
-      // First order — OTP is REQUIRED
-      if (!currentUser.phone) {
-        showToast('خطأ: رقم الهاتف غير مسجل');
-        return;
-      }
-      setOrderOtpPending(true);
-      setPhoneNumber(currentUser.phone);
-      setPhoneStep('enterPhone');
-      try {
-        const res = await fetchWithTimeout(`${SERVER_URL}/send-otp`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: currentUser.phone })
-        }, 45000);
-        const data = await res.json();
-        if (data.success) {
-          setPhoneStep('enterCode');
-          setOtpError('');
-        } else {
-          throw new Error(data.error || 'OTP failed');
-        }
-      } catch(e) {
-        setOtpError('خدمة التحقق من الهاتف غير متاحة، حاول لاحقاً');
-        showToast('⚠️ التحقق من الهاتف مطلوب، حاول لاحقاً');
+      } else {
+        setOtpCode('');
+        setOtpSent(false);
+        setShowOtpModal(true);
       }
     } catch(e) {
       showToast('خطأ: ' + e.message);
+    }
+  };
+
+  const hasUserOrdered = async (uid) => {
+    try {
+      const q = query(collection(db, 'orders'), where('userId', '==', uid));
+      const snap = await getDocs(q);
+      return snap.docs.length > 0;
+    } catch(e) {
+      return false;
+    }
+  };
+
+  const sendOtp = async () => {
+    if (!currentUser?.phone) { showToast('❌ لا يوجد رقم هاتف'); return; }
+    setIsVerifyingOtp(true);
+    try {
+      const idToken = await auth().currentUser?.getIdToken();
+      const res = await fetch(SERVER_URL + '/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: currentUser.phone, idToken })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setOtpSent(true);
+        showToast('✅ تم إرسال الرمز' + (data.code ? ' (تجريبي: ' + data.code + ')' : ''));
+      } else {
+        showToast('❌ فشل الإرسال: ' + (data.error || ''));
+      }
+    } catch(e) {
+      showToast('❌ خطأ: ' + e.message);
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    if (!otpCode || otpCode.length < 6) { showToast('❌ أدخل الرمز كاملاً'); return; }
+    setIsVerifyingOtp(true);
+    try {
+      const idToken = await auth().currentUser?.getIdToken();
+      const res = await fetch(SERVER_URL + '/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: otpCode, idToken })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCurrentUser(prev => ({ ...prev, verifiedForOrdering: true }));
+        setShowOtpModal(false);
+        setOtpCode('');
+        setOtpSent(false);
+        showToast('✅ تم التحقق');
+        setShowConfirmOrderModal(true);
+      } else {
+        showToast('❌ رمز خاطئ: ' + (data.error || ''));
+      }
+    } catch(e) {
+      showToast('❌ خطأ: ' + e.message);
+    } finally {
+      setIsVerifyingOtp(false);
     }
   };
 
@@ -1044,52 +1155,68 @@ const [adminOrders, setAdminOrders] = React.useState([]);
     setSearchQuery('');
   };
 
-  const renderHome = () => (
+const renderHome = () => {
+  const searchResults = menuFromDB.filter(i => i.name && i.name.includes(searchQuery)).slice(0, 6);
+  const featuredItems = cartItems;
+  const activeCoupon = coupons.find(c => c.active !== false && (!c.expiresAt || new Date(c.expiresAt) >= new Date()) && (!c.maxUses || (c.currentUses || 0) < c.maxUses));
+
+  return (
     <ScrollView style={styles.page} showsVerticalScrollIndicator={false}>
       <Animated.View style={{ opacity: heroAnim, transform: [{ translateY: heroAnim.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }] }}>
-      <View style={styles.hero}>
-        <ImageBackground source={galleryImages.hero ? { uri: galleryImages.hero } : require('./assets/hero_image.jpg')} style={styles.heroImage}>
-          <View style={styles.heroOverlay} />
-          <View style={styles.homeHeader}>
-            {showSearch ? (
-              <View style={styles.searchBarInline}>
-                <TextInput
-                  style={styles.searchBarInlineInput}
-                  placeholder="ابحث عن وجبة..."
-                  placeholderTextColor="#fff"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  autoFocus
-                />
-                <TouchableOpacity onPress={() => { setShowSearch(false); setSearchQuery(''); }}>
-                  <Feather name="x" size={20} color="#fff" />
+        <View style={styles.xHero}>
+          <ImageBackground source={galleryImages.hero ? { uri: galleryImages.hero } : require('./assets/hero_image.jpg')} style={styles.heroImage}>
+            <View style={styles.heroOverlayTop} />
+            <View style={styles.heroOverlayBottom} />
+
+            <View style={styles.homeHeader}>
+              {showSearch ? (
+                <View style={styles.searchBarInline}>
+                  <TextInput
+                    style={styles.searchBarInlineInput}
+                    placeholder="ابحث عن وجبة..."
+                    placeholderTextColor="rgba(255,255,255,0.6)"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    autoFocus
+                  />
+                  <TouchableOpacity onPress={() => { setShowSearch(false); setSearchQuery(''); }}>
+                    <Ionicons name="close" size={20} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.logoBox}>
+                  <Image source={require('./assets/logo.png')} style={styles.logoImg} />
+                  <Text style={styles.logoName}>سوبر برجر</Text>
+                </View>
+              )}
+              <View style={styles.headerIcons}>
+                <TouchableOpacity style={styles.hicon} onPress={() => setShowMenuModal(true)}>
+                  <Ionicons name="menu-outline" size={20} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.hicon} onPress={() => { setShowSearch(true); setShowNotifications(false); }}>
+                  <Feather name="search" size={18} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.hicon} onPress={() => { setShowNotifications(true); setShowSearch(false); }}>
+                  <Ionicons name="notifications-outline" size={18} color="#fff" />
+                  {notifData && <View style={styles.notifDot} />}
                 </TouchableOpacity>
               </View>
-            ) : (
-              <View style={styles.logoBox}>
-                <Image source={require('./assets/logo.png')} style={styles.logoImg} />
-                <Text style={styles.logoName}>سوبر برجر</Text>
-              </View>
-            )}
-            <View style={styles.headerIcons}>
-              <TouchableOpacity style={styles.hicon} onPress={() => setShowMenuModal(true)}>
-                <Ionicons name="menu-outline" size={20} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.hicon} onPress={() => { setShowSearch(true); setShowNotifications(false); }}>
-                <Feather name="search" size={18} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.hicon} onPress={() => { setShowNotifications(true); setShowSearch(false); }}>
-                <Ionicons name="notifications-outline" size={18} color="#fff" />
-              </TouchableOpacity>
             </View>
-          </View>
-          <View style={styles.heroText}>
-            <View style={styles.heroTag}><Text style={{ color: '#000', fontWeight: '900', fontSize: 10 }}>THE BEST EVER</Text></View>
-            <Text style={styles.heroTitle}>ألذّ برجر<Text style={styles.goldText}> في قلقيلية</Text></Text>
-            <Text style={styles.heroSub}>طازج • مشوي على الفحم • محتكر بحب</Text>
-          </View>
-        </ImageBackground>
-      </View>
+
+            <View style={styles.heroText}>
+              <Animated.View style={[styles.heroTag, { transform: [{ translateY: homeFloat.interpolate({ inputRange: [0,1], outputRange: [-3,3] }) }] }]}>
+                <View style={styles.heroTagDot} />
+                <Text style={styles.heroTagText}>مفتوح الآن</Text>
+              </Animated.View>
+              <Text style={styles.heroTitle}>ألذّ برجر<Text style={styles.goldText}> في قلقيلية</Text></Text>
+              <Text style={styles.heroSub}>طازج • مشوي على الفحم • محتكر بحب</Text>
+              <Pressable style={({ pressed }) => [styles.heroCta, pressed && { transform: [{ scale: 0.97 }] }]} onPress={() => setActiveTab('menu')}>
+                <Text style={styles.heroCtaText}>اطلب الآن</Text>
+                <Ionicons name="arrow-back" size={18} color="#0e0c0a" />
+              </Pressable>
+            </View>
+          </ImageBackground>
+        </View>
       </Animated.View>
 
       {showNotifications && (
@@ -1100,11 +1227,18 @@ const [adminOrders, setAdminOrders] = React.useState([]);
               <Ionicons name="close" size={18} color="#fff" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.notifEmpty}>لا توجد إشعارات جديدة</Text>
+          {notifData ? (
+            <View style={styles.notifBody}>
+              <Text style={styles.notifBodyTitle}>{notifData.title}</Text>
+              <Text style={styles.notifBodyText}>{notifData.body}</Text>
+            </View>
+          ) : (
+            <Text style={styles.notifEmpty}>لا توجد إشعارات جديدة</Text>
+          )}
         </View>
       )}
 
-      {showSearch && searchQuery.length > 0 && menuData.filter(i => i.name.includes(searchQuery) || i.desc.includes(searchQuery)).length > 0 && (
+      {showSearch && searchQuery.length > 0 && (
         <View style={styles.searchResultsCard}>
           <View style={styles.searchResultsHeader}>
             <Text style={styles.searchResultsTitle}>نتائج البحث</Text>
@@ -1112,237 +1246,253 @@ const [adminOrders, setAdminOrders] = React.useState([]);
               <Ionicons name="close" size={18} color="#000" />
             </TouchableOpacity>
           </View>
-          <ScrollView style={styles.searchResultsScroll} nestedScrollEnabled>
-          {menuData.filter(i => i.name.includes(searchQuery) || i.desc.includes(searchQuery)).map((item) => (
-            <TouchableOpacity key={item.id} style={styles.searchResultItem} onPress={() => searchResultPress(item)}>
-              <Text style={styles.searchResultName}>{item.name}</Text>
-              <Text style={styles.searchResultPrice}>₪{item.price}</Text>
-            </TouchableOpacity>
-          ))}
-          </ScrollView>
+          {searchResults.length > 0 ? (
+            <ScrollView style={styles.searchResultsScroll} nestedScrollEnabled>
+              {searchResults.map((item) => (
+                <TouchableOpacity key={item.id} style={styles.searchResultItem} onPress={() => searchResultPress(item)}>
+                  <Text style={styles.searchResultName}>{item.name}</Text>
+                  <Text style={styles.searchResultPrice}>₪{item.price}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.searchEmpty}>
+              <Ionicons name="search-outline" size={32} color={COLORS.textMuted} />
+              <Text style={styles.searchEmptyText}>لا توجد نتائج</Text>
+            </View>
+          )}
         </View>
       )}
 
       <Animated.View style={{ opacity: sectionAnims[0], transform: [{ translateY: sectionAnims[0].interpolate({ inputRange: [0,1], outputRange: [30,0] }) }] }}>
-      <View style={styles.statsRow}>
-        {[
-          { icon: 'bicycle-outline', val: statSettings.delivery + ' ₪', label: 'التوصيل', key: 'delivery' },
-          { icon: 'time-outline', val: statSettings.prepTime + ' د', label: 'التحضير', key: 'prepTime' },
-          { icon: 'star-outline', val: statSettings.rating, label: 'التقييم', key: 'rating' },
-        ].map((s, i) => (
-          <Animated.View key={i} style={[styles.statCard, { transform: [{ scale: statScale[i] }] }]}>
-            <View style={styles.statIconWrap}>
-              <Ionicons name={s.icon} size={22} color={COLORS.bg} />
-            </View>
-            <Text style={styles.statVal}>{s.val}</Text>
-            <Text style={styles.statLabel}>{s.label}</Text>
-          </Animated.View>
-        ))}
-      </View>
+        <View style={styles.xStatsBar}>
+          {[
+            { icon: 'bicycle-outline', val: statSettings.delivery + ' ₪', label: 'التوصيل' },
+            { icon: 'time-outline', val: statSettings.prepTime + ' د', label: 'التحضير' },
+            { icon: 'star', val: statSettings.rating, label: 'التقييم' },
+          ].map((s, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <View style={styles.xStatDivider} />}
+              <View style={styles.xStatCell}>
+                <Ionicons name={s.icon} size={20} color={COLORS.gold} style={styles.xStatIcon} />
+                <Text style={styles.xStatVal}>{s.val}</Text>
+                <Text style={styles.xStatLabel}>{s.label}</Text>
+              </View>
+            </React.Fragment>
+          ))}
+        </View>
       </Animated.View>
 
       <Animated.View style={{ opacity: sectionAnims[1], transform: [{ translateY: sectionAnims[1].interpolate({ inputRange: [0,1], outputRange: [30,0] }) }] }}>
-      <View style={styles.gallerySection}>
-        <Text style={styles.galleryTitle}>شو رأيك تجرب وجبتنا اليوم</Text>
-        <View style={styles.galleryLineWrap}>
-          <View style={styles.galleryLine} />
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>وجبات مختارة</Text>
+          <TouchableOpacity onPress={() => setActiveTab('menu')}>
+            <Text style={styles.sectionLink}>عرض الكل</Text>
+          </TouchableOpacity>
         </View>
-        <View style={styles.galleryRow}>
-          <View style={styles.galleryMain}>
-            <Image source={galleryImages.main ? { uri: galleryImages.main } : require('./assets/a.jpg')} style={styles.galleryMainImg} />
+        {featuredItems.length > 0 ? (
+          <FlatList
+            data={featuredItems}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.featuredList}
+            keyExtractor={(item, idx) => item.id || `feat-${idx}`}
+            renderItem={({ item, index }) => (
+              <HomeFeaturedCard
+                item={item}
+                index={index}
+                loginWarning={loginWarningItemId === item.id}
+              />
+            )}
+          />
+        ) : (
+          <View style={styles.featuredSkeletonRow}>
+            {[0,1,2].map(i => <HomeSkeletonCard key={i} />)}
           </View>
-          <View style={styles.gallerySmallCol}>
-            <View style={styles.gallerySmall}>
-              <Image source={galleryImages.small1 ? { uri: galleryImages.small1 } : require('./assets/asset.jpg')} style={styles.gallerySmallImg} />
-            </View>
-            <View style={styles.gallerySmall}>
-              <Image source={galleryImages.small2 ? { uri: galleryImages.small2 } : require('./assets/whySuper.jpg')} style={styles.gallerySmallImg} />
-            </View>
-          </View>
-        </View>
-      </View>
+        )}
       </Animated.View>
 
-
       <Animated.View style={{ opacity: sectionAnims[2], transform: [{ translateY: sectionAnims[2].interpolate({ inputRange: [0,1], outputRange: [30,0] }) }] }}>
-      <View style={styles.couponPremium}>
-        {(() => {
-          const activeCoupon = coupons.find(c => c.active !== false && (!c.expiresAt || new Date(c.expiresAt) >= new Date()) && (!c.maxUses || (c.currentUses || 0) < c.maxUses));
-          return activeCoupon ? (
-            <><View style={styles.couponPremiumBadge}>
-                <Text style={styles.couponPremiumPct}>{activeCoupon.discount}%</Text>
-                <Text style={styles.couponPremiumOff}>خصم</Text>
-              </View>
-              <View style={styles.couponPremiumInfo}>
-                <Text style={styles.couponPremiumTitle}>كود الخصم</Text>
-                <Text style={styles.couponPremiumDesc}>استخدم الكود واحصل على خصم {activeCoupon.discount}%{activeCoupon.expiresAt ? ` - ينتهي ${new Date(activeCoupon.expiresAt).toLocaleDateString('ar-SA')}` : ''}</Text>
-                <View style={styles.couponPremiumCodeRow}>
-                  <TouchableOpacity style={styles.couponPremiumCopy} onPress={() => { setCopiedCoupon(true); setTimeout(() => setCopiedCoupon(false), 2000); }}>
-                    <Text style={styles.couponPremiumCopyText}>{copiedCoupon ? 'تم النسخ' : 'نسخ'}</Text>
-                    <Ionicons name={copiedCoupon ? 'checkmark' : 'copy'} size={14} color={copiedCoupon ? '#000' : COLORS.gold} />
-                  </TouchableOpacity>
-                  <View style={styles.couponPremiumCodeBox}>
-                    <Text style={styles.couponPremiumCode}>{activeCoupon.code}</Text>
-                  </View>
-                </View>
-              </View></>
-          ) : (
-            <View style={{ padding: 20, alignItems: 'center', width: '100%' }}>
-              <Ionicons name="pricetag" size={24} color={COLORS.textMuted} />
-              <Text style={{ fontSize: 14, color: COLORS.textMuted, marginTop: 8 }}>لا توجد كوبونات متاحة حالياً</Text>
+        <View style={styles.gallerySection}>
+          <Text style={styles.sectionTitle}>شو رأيك تجرب وجبتنا اليوم</Text>
+          <View style={styles.galleryGrid}>
+            <Animated.View style={[styles.galleryMain, { opacity: galleryAnim[0], transform: [{ scale: galleryAnim[0].interpolate({ inputRange: [0,1], outputRange: [0.95,1] }) }] }]}>
+              <Image source={galleryImages.main ? { uri: galleryImages.main } : require('./assets/a.jpg')} style={styles.galleryMainImg} />
+              <View style={styles.xGalScrim} />
+              <View style={styles.xGalLabel}><Text style={styles.xGalLabelTxt}>{galleryImages.mainLabel || '🔥 الأكثر طلباً'}</Text></View>
+            </Animated.View>
+            <View style={styles.gallerySmallCol}>
+              <Animated.View style={[styles.gallerySmall, { opacity: galleryAnim[1], transform: [{ scale: galleryAnim[1].interpolate({ inputRange: [0,1], outputRange: [0.95,1] }) }] }]}>
+                <Image source={galleryImages.small1 ? { uri: galleryImages.small1 } : require('./assets/asset.jpg')} style={styles.gallerySmallImg} />
+                <View style={styles.xGalScrim} />
+                <View style={styles.xGalLabel}><Text style={styles.xGalLabelTxt}>{galleryImages.small1Label || '⭐ مميز'}</Text></View>
+              </Animated.View>
+              <Animated.View style={[styles.gallerySmall, { opacity: galleryAnim[2], transform: [{ scale: galleryAnim[2].interpolate({ inputRange: [0,1], outputRange: [0.95,1] }) }] }]}>
+                <Image source={galleryImages.small2 ? { uri: galleryImages.small2 } : require('./assets/whySuper.jpg')} style={styles.gallerySmallImg} />
+                <View style={styles.xGalScrim} />
+                <View style={styles.xGalLabel}><Text style={styles.xGalLabelTxt}>{galleryImages.small2Label || '🆕 جديد'}</Text></View>
+              </Animated.View>
             </View>
-          );
-        })()}
-      </View>
+          </View>
+        </View>
       </Animated.View>
 
       <Animated.View style={{ opacity: sectionAnims[3], transform: [{ translateY: sectionAnims[3].interpolate({ inputRange: [0,1], outputRange: [30,0] }) }] }}>
-      <View style={styles.loyaltyHow}>
-        <Text style={styles.loyaltyHowTitle}>برنامج الولاء</Text>
-        <View style={styles.loyaltyHowStep}>
-          <View style={styles.loyaltyHowStepNum}><Text style={styles.loyaltyHowStepNumText}>1</Text></View>
-          <View style={styles.loyaltyHowStepInfo}>
-            <Text style={styles.loyaltyHowStepTitle}>اطلب من القائمة</Text>
-            <Text style={styles.loyaltyHowStepDesc}>اختر الوجبة اللي بدك إياها من قائمة الطعام</Text>
-          </View>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>كوبون اليوم</Text>
         </View>
-        <View style={styles.loyaltyHowStep}>
-          <View style={styles.loyaltyHowStepNum}><Text style={styles.loyaltyHowStepNumText}>2</Text></View>
-          <View style={styles.loyaltyHowStepInfo}>
-            <Text style={styles.loyaltyHowStepTitle}>اشتري بقيمة ₪{loyaltySettings.targetAmount}</Text>
-            <Text style={styles.loyaltyHowStepDesc}>كل ما تزيد قيمة طلبك، كلما زادت نقاط ولائك</Text>
+        {activeCoupon ? (
+          <View style={styles.xCoup}>
+            <View style={styles.xCoupHeader}>
+              <View style={styles.xCoupBadge}>
+                <Text style={styles.xCoupBadgePct}>{activeCoupon.discount}%</Text>
+                <Text style={styles.xCoupBadgeOff}>خصم</Text>
+              </View>
+              <View style={styles.xCoupHeaderText}>
+                <Text style={styles.xCoupTitle}>استخدم الكود عند الطلب</Text>
+                <Text style={styles.xCoupDesc}>خصم {activeCoupon.discount}% على طلبك{activeCoupon.expiresAt ? ` · ينتهي ${new Date(activeCoupon.expiresAt).toLocaleDateString('ar-SA')}` : ''}</Text>
+              </View>
+            </View>
+            <View style={styles.xCoupCodeRow}>
+              <TouchableOpacity style={styles.xCoupCopy} onPress={() => { setCopiedCoupon(true); setTimeout(() => setCopiedCoupon(false), 2000); }}>
+                <Ionicons name={copiedCoupon ? 'checkmark' : 'copy-outline'} size={15} color={COLORS.bg} />
+                <Text style={styles.xCoupCopyTxt}>{copiedCoupon ? 'تم النسخ' : 'نسخ الكود'}</Text>
+              </TouchableOpacity>
+              <View style={styles.xCoupCodeBox}>
+                <Text style={styles.xCoupCodeLbl}>الكود</Text>
+                <Text style={styles.xCoupCode}>{activeCoupon.code}</Text>
+              </View>
+            </View>
           </View>
-        </View>
-        <View style={styles.loyaltyHowStep}>
-          <View style={styles.loyaltyHowStepNum}><Text style={styles.loyaltyHowStepNumText}>3</Text></View>
-          <View style={styles.loyaltyHowStepInfo}>
-            <Text style={styles.loyaltyHowStepTitle}>احصل على نقاط ولاء</Text>
-            <Text style={styles.loyaltyHowStepDesc}>تجمّع نقاط ولاء وتستبدلها بأصناف من القائمة</Text>
+        ) : (
+          <View style={styles.xCoupEmpty}>
+            <Ionicons name="pricetags-outline" size={26} color={COLORS.textMuted} />
+            <Text style={styles.couponEmptyText}>لا توجد كوبونات متاحة حالياً</Text>
           </View>
-        </View>
-      </View>
+        )}
       </Animated.View>
 
       <Animated.View style={{ opacity: sectionAnims[4], transform: [{ translateY: sectionAnims[4].interpolate({ inputRange: [0,1], outputRange: [30,0] }) }] }}>
-      <View style={styles.loyaltyProgressCard}>
-        <View style={styles.loyaltyProgressHeader}>
-          <View style={styles.loyaltyProgressRight}>
-            <Text style={styles.loyaltyProgressTitle}>رصيد نقاط الولاء</Text>
-            <Text style={styles.loyaltyProgressSub}>اجمع النقاط واستبدلها بأصناف من القائمة</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={{ backgroundColor: COLORS.gold, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center' }}>
-              <Text style={{ fontSize: 20, fontWeight: '900', color: '#000' }}>{currentUser?.loyaltyPoints || 0}</Text>
-              <Text style={{ fontSize: 10, fontWeight: '700', color: '#000', marginTop: -2 }}>نقطة</Text>
+        <View style={styles.loyaltySection}>
+          <Text style={styles.sectionTitle}>برنامج الولاء</Text>
+          <View style={styles.xLoyalCard}>
+            <View style={styles.xLoyalTop}>
+              <View style={{ flex: 1, paddingLeft: 14 }}>
+                <Text style={styles.xLoyalTitle}>رصيد نقاطك</Text>
+                <Text style={styles.xLoyalSub}>اجمع النقاط مع كل طلب واستبدلها بأصناف لذيذة من القائمة</Text>
+              </View>
+              <View style={styles.xLoyalRing}>
+                <Text style={styles.xLoyalRingNum}>{currentUser?.loyaltyPoints || 0}</Text>
+                <Text style={styles.xLoyalRingLbl}>نقطة</Text>
+              </View>
             </View>
-            <View style={styles.loyaltyProgressIconWrap}>
-              <MaterialCommunityIcons name="star" size={24} color={COLORS.gold} />
-            </View>
+            {(() => { const cycleSpent = Math.max(0, userTotalSpent - (currentUser?.loyaltySpentAwarded || 0)); const pct = Math.min((cycleSpent / (loyaltySettings.targetAmount || 1)) * 100, 100); const SEG = 10; const onSeg = Math.round((pct / 100) * SEG); return (
+              <>
+                <View style={styles.xLoyalSegRow}>
+                  {Array.from({ length: SEG }).map((_, i) => (
+                    <View key={i} style={[styles.xLoyalSeg, i < onSeg && styles.xLoyalSegOn]} />
+                  ))}
+                </View>
+                <View style={styles.xLoyalMetaRow}>
+                  <Text style={styles.xLoyalMeta}>الهدف <Text style={styles.xLoyalMetaStrong}>₪{loyaltySettings.targetAmount}</Text></Text>
+                  <Text style={styles.xLoyalMeta}>أنفقت <Text style={styles.xLoyalMetaStrong}>₪{cycleSpent}</Text></Text>
+                </View>
+                {cycleSpent >= loyaltySettings.targetAmount ? (
+                  <TouchableOpacity style={styles.xLoyalRedeem} onPress={async () => {
+                    if (!currentUser?.uid) return;
+                    try {
+                      const userRef = doc(db, 'users', currentUser.uid);
+                      const userSnap = await getDoc(userRef);
+                      const uData = userSnap.data();
+                      if (!uData) return;
+                      const pts = uData.loyaltyPoints || 0;
+                      const awarded = uData.loyaltySpentAwarded || 0;
+                      const cycleCount = Math.floor((userTotalSpent) / (loyaltySettings.targetAmount || 100));
+                      const alreadyAwarded = Math.floor(awarded / (loyaltySettings.targetAmount || 100));
+                      const newCycles = cycleCount - alreadyAwarded;
+                      if (newCycles <= 0) { showToast('تم استبدال النقاط مسبقاً'); return; }
+                      const addPoints = newCycles * (loyaltySettings.pointsPerReward || 5);
+                      const newAwardedVal = cycleCount * (loyaltySettings.targetAmount || 100);
+                      await updateDoc(userRef, { loyaltyPoints: pts + addPoints, loyaltySpentAwarded: newAwardedVal });
+                      showToast(`تم إضافة ${addPoints} نقاط ولاء!`);
+                    } catch(e) { showToast('خطأ: ' + e.message); }
+                  }}>
+                    <MaterialCommunityIcons name="gift" size={16} color={COLORS.bg} />
+                    <Text style={styles.xLoyalRedeemTxt}>استبدل نقاطك الآن</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.xLoyalChips}>
+                    <View style={[styles.xLoyalChip, { borderColor: 'rgba(255,193,7,0.35)' }]}>
+                      <MaterialCommunityIcons name="map-marker-distance" size={14} color={COLORS.gold} />
+                      <Text style={styles.xLoyalChipTxt}>متبقي ₪{Math.max(0, loyaltySettings.targetAmount - cycleSpent)}</Text>
+                    </View>
+                    <View style={styles.xLoyalChip}><MaterialCommunityIcons name="gift-outline" size={14} color={COLORS.gold} /><Text style={styles.xLoyalChipTxt}>استبدل</Text></View>
+                    <View style={styles.xLoyalChip}><MaterialCommunityIcons name="star-four-points" size={14} color={COLORS.gold} /><Text style={styles.xLoyalChipTxt}>اجمع نقاط</Text></View>
+                    <View style={styles.xLoyalChip}><MaterialCommunityIcons name="silverware-fork-knife" size={14} color={COLORS.gold} /><Text style={styles.xLoyalChipTxt}>اطلب</Text></View>
+                  </View>
+                )}
+              </>
+            ); })()}
           </View>
         </View>
-        <View style={styles.loyaltyProgressDivider} />
-        {(() => { const cycleSpent = Math.max(0, userTotalSpent - (currentUser?.loyaltySpentAwarded || 0)); return (
-        <><View style={styles.loyaltyProgressRow}>
-          <View style={styles.loyaltyProgressAmount}>
-            <Text style={styles.loyaltyProgressAmountLabel}>أنفقت في هذه الدورة</Text>
-            <Text style={styles.loyaltyProgressAmountVal}>₪{cycleSpent}</Text>
-          </View>
-          <View style={styles.loyaltyProgressTarget}>
-            <Text style={styles.loyaltyProgressTargetLabel}>الهدف</Text>
-            <Text style={styles.loyaltyProgressTargetVal}>₪{loyaltySettings.targetAmount}</Text>
-          </View>
-        </View>
-        <View style={styles.loyaltyProgressBarWrap}>
-          <View style={styles.loyaltyProgressBg}>
-            <View style={[styles.loyaltyProgressFill, { width: Math.min((cycleSpent / loyaltySettings.targetAmount) * 100, 100) + '%' }]} />
-          </View>
-          <View style={styles.loyaltyProgressDotWrap}>
-            <View style={[styles.loyaltyProgressDot, { left: Math.min((cycleSpent / loyaltySettings.targetAmount) * 100, 100) + '%' }]} />
-          </View>
-        </View>
-        {cycleSpent >= loyaltySettings.targetAmount ? (
-          <TouchableOpacity style={styles.loyaltyRedeemBtn} onPress={async () => {
-            if (!currentUser?.uid) return;
-            try {
-              const userRef = doc(db, 'users', currentUser.uid);
-              const userSnap = await getDoc(userRef);
-              const uData = userSnap.data();
-              if (!uData) return;
-              const pts = uData.loyaltyPoints || 0;
-              const awarded = uData.loyaltySpentAwarded || 0;
-              const cycleCount = Math.floor((userTotalSpent) / (loyaltySettings.targetAmount || 100));
-              const alreadyAwarded = Math.floor(awarded / (loyaltySettings.targetAmount || 100));
-              const newCycles = cycleCount - alreadyAwarded;
-              if (newCycles <= 0) { showToast('⚠️ تم استبدال النقاط مسبقاً'); return; }
-              const addPoints = newCycles * (loyaltySettings.pointsPerReward || 5);
-              const newAwardedVal = cycleCount * (loyaltySettings.targetAmount || 100);
-              await updateDoc(userRef, { loyaltyPoints: pts + addPoints, loyaltySpentAwarded: newAwardedVal });
-              showToast(`✅ تم إضافة ${addPoints} نقاط ولاء!`);
-            } catch(e) { showToast('❌ خطأ: ' + e.message); }
-          }}>
-            <MaterialCommunityIcons name="gift" size={16} color={COLORS.bg} />
-            <Text style={styles.loyaltyRedeemText}>استبدل نقاطك</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.loyaltyRemainRow}>
-            <MaterialCommunityIcons name="information" size={14} color={COLORS.textMuted} />
-            <Text style={styles.loyaltyRemainText}>متبقي ₪{Math.max(0, loyaltySettings.targetAmount - cycleSpent)} لتحصل على النقاط</Text>
-          </View>
-        )}</>
-        );})()}
-      </View>
       </Animated.View>
 
       <Animated.View style={{ opacity: sectionAnims[5], transform: [{ translateY: sectionAnims[5].interpolate({ inputRange: [0,1], outputRange: [30,0] }) }] }}>
-      <View style={styles.contactSection}>
-        <View style={styles.contactHeader}>
-          <Text style={styles.contactTitle}>تواصل معنا</Text>
-          <View style={styles.contactLine} />
-        </View>
-
-        <View style={styles.contactCard}>
-          <TouchableOpacity style={styles.contactRow} onPress={() => Linking.openURL('tel:0593221500')}>
-            <View style={styles.contactIconBox}>
-              <Ionicons name="call" size={22} color={COLORS.bg} />
+        <View style={styles.contactSection}>
+          <Text style={styles.sectionTitle}>تواصل معنا</Text>
+          <View style={styles.contactCard}>
+            <TouchableOpacity style={styles.contactRow} onPress={() => Linking.openURL('tel:0593221500')}>
+              <View style={styles.contactIconBox}>
+                <Ionicons name="call" size={22} color={COLORS.bg} />
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactLabel}>اتصل بنا</Text>
+                <Text style={styles.contactText}>0593221500</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+            <View style={styles.contactDivider} />
+            <View style={styles.contactRow}>
+              <View style={styles.contactIconBox}>
+                <Ionicons name="location" size={22} color={COLORS.bg} />
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactLabel}>الموقع</Text>
+                <Text style={styles.contactText}>قلقيلية{'\n'}شارع حبلة القديم - بالقرب من مبنى المحافظة</Text>
+              </View>
             </View>
-            <View style={styles.contactInfo}>
-              <Text style={styles.contactLabel}>اتصل بنا</Text>
-              <Text style={styles.contactText}>0593221500</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-          </TouchableOpacity>
-
-          <View style={styles.contactDivider} />
-
-          <View style={styles.contactRow}>
-            <View style={styles.contactIconBox}>
-              <Ionicons name="location" size={22} color={COLORS.bg} />
-            </View>
-            <View style={styles.contactInfo}>
-              <Text style={styles.contactLabel}>الموقع</Text>
-              <Text style={styles.contactText}>قلقيلية{'\n'}شارع حبلة القديم - بالقرب من مبنى المحافظة</Text>
-            </View>
+            <View style={styles.contactDivider} />
+            <TouchableOpacity style={styles.contactRow} onPress={() => Linking.openURL('https://wa.me/970593221500')}>
+              <View style={[styles.contactIconBox, { backgroundColor: '#25D366' }]}>
+                <Ionicons name="logo-whatsapp" size={22} color="#fff" />
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactLabel}>واتساب</Text>
+                <Text style={styles.contactText}>تواصل معنا مباشرة</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
           </View>
-
-          <View style={styles.contactDivider} />
-
-          <TouchableOpacity style={styles.contactRow} onPress={() => Linking.openURL('https://wa.me/970593221500')}>
-            <View style={[styles.contactIconBox, { backgroundColor: '#25D366' }]}>
-              <Ionicons name="logo-whatsapp" size={22} color="#fff" />
-            </View>
-            <View style={styles.contactInfo}>
-              <Text style={styles.contactLabel}>واتساب</Text>
-              <Text style={styles.contactText}>تواصل معنا مباشرة</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-          </TouchableOpacity>
         </View>
-      </View>
       </Animated.View>
 
-      <View style={{ height: 100 }} />
+      <Animated.View style={{ opacity: sectionAnims[5], transform: [{ translateY: sectionAnims[5].interpolate({ inputRange: [0,1], outputRange: [30,0] }) }] }}>
+        <Pressable style={({ pressed }) => [styles.menuCtaCard, pressed && { transform: [{ scale: 0.98 }] }]} onPress={() => setActiveTab('menu')}>
+          <View>
+            <Text style={styles.menuCtaTitle}>جرب قائمتنا الكاملة</Text>
+            <Text style={styles.menuCtaSub}>برجر، دجاج، إضافات ومشروبات</Text>
+          </View>
+          <View style={styles.menuCtaBtn}>
+            <Text style={styles.menuCtaBtnText}>تصفح</Text>
+            <Ionicons name="arrow-back" size={16} color="#000" />
+          </View>
+        </Pressable>
+      </Animated.View>
+
+      <View style={{ height: 120 }} />
     </ScrollView>
   );
+};
 
   const renderMenu = () => (
     <ScrollView style={styles.page} showsVerticalScrollIndicator={false}>
@@ -1374,44 +1524,44 @@ const [adminOrders, setAdminOrders] = React.useState([]);
         {couponError && !couponApplied && <Text style={styles.menuCouponError}>❌ الكوبون غير صحيح</Text>}
       </View>
 
-      <View style={styles.menuList}>
+      <View style={styles.xMenuGrid}>
         {menuFromDB.filter(i => menuCat === 'all' || i.cat === menuCat).filter(i => !searchText || (i.name && i.name.includes(searchText))).map((item) => (
-          <View key={item.id} style={[styles.menuCard, selectedItem === item.id && styles.menuCardHighlighted]}>
-            {item.badge ? <View style={[styles.menuCardBadge, item.badge === 'جديد' && styles.menuCardBadgeNew]}><Text style={styles.menuCardBadgeText}>{item.badge}</Text></View> : null}
-            {item.image ? (
-              <Image source={{ uri: item.image }} style={styles.menuCardImage} />
-            ) : (
-              <View style={styles.menuCardImagePlaceholder}>
-                <Ionicons name="fast-food" size={32} color="#444" />
-              </View>
-            )}
-            <View style={styles.menuCardInfo}>
-              <Text style={styles.menuCardName}>{item.name}</Text>
-              <Text style={styles.menuCardDesc}>{item.desc}</Text>
-              <View style={styles.menuCardFooter}>
-                <Text style={styles.menuCardPrice}>₪{getDiscountedPrice(item.price)}</Text>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
+          <View key={item.id} style={[styles.xGridCard, selectedItem === item.id && styles.xGridCardOn]}>
+            <View style={styles.xGridImgWrap}>
+              {item.image ? (
+                <Image source={{ uri: item.image }} style={styles.xGridImg} />
+              ) : (
+                <View style={styles.xGridPlaceholder}>
+                  <Ionicons name="fast-food" size={30} color={COLORS.textMuted} />
+                </View>
+              )}
+              {item.badge ? <View style={[styles.xGridBadge, item.badge === 'جديد' && styles.xGridBadgeNew]}><Text style={styles.xGridBadgeTxt}>{item.badge}</Text></View> : null}
+            </View>
+            <View style={styles.xGridBody}>
+              <Text style={styles.xGridName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.xGridDesc} numberOfLines={2}>{item.desc}</Text>
+              <View style={styles.xGridFooter}>
+                <Text style={styles.xGridPrice}>₪{getDiscountedPrice(item.price)}</Text>
+                <View style={styles.xGridActions}>
                   {item.pointsPrice > 0 && (
-                    <TouchableOpacity style={styles.loyaltyMenuBtn} onPress={() => redeemLoyaltyItem(item)}>
-                      <MaterialCommunityIcons name="gift" size={14} color="#000" />
-                      <Text style={{ fontSize: 9, fontWeight: '700', color: '#000' }}>{item.pointsPrice}</Text>
+                    <TouchableOpacity style={styles.xGridLoyalBtn} onPress={() => redeemLoyaltyItem(item)}>
+                      <MaterialCommunityIcons name="gift" size={13} color={COLORS.gold} />
+                      <Text style={styles.xGridLoyalTxt}>{item.pointsPrice}</Text>
                     </TouchableOpacity>
                   )}
-                  <TouchableOpacity style={styles.addBtn} onPress={() => addToCart(item)}>
-                    <Text style={styles.addBtnText}>+</Text>
+                  <TouchableOpacity style={styles.xGridAdd} onPress={() => addToCart(item)}>
+                    <Ionicons name="add" size={22} color={COLORS.bg} />
                   </TouchableOpacity>
                 </View>
               </View>
               {loginWarningItemId === item.id && (
-                <View style={{ backgroundColor: 'rgba(231,76,60,0.12)', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, marginTop: 10, borderWidth: 1, borderColor: 'rgba(231,76,60,0.3)' }}>
-                  <Text style={{ color: '#ff6b6b', fontSize: 12, textAlign: 'center', fontWeight: '600' }}>⚠ يجب تسجيل الدخول أولاً</Text>
-                </View>
+                <Text style={styles.xGridWarn}>⚠ يجب تسجيل الدخول أولاً</Text>
               )}
             </View>
           </View>
         ))}
         {menuFromDB.length === 0 && (
-          <View style={styles.emptyMenuState}>
+          <View style={[styles.emptyMenuState, { width: '100%' }]}>
             <Ionicons name="restaurant-outline" size={64} color={COLORS.textMuted} />
             <Text style={styles.emptyMenuTitle}>القائمة فاضية</Text>
             <Text style={styles.emptyMenuText}>لا توجد أصناف متاحة حاليًا</Text>
@@ -1424,8 +1574,8 @@ const [adminOrders, setAdminOrders] = React.useState([]);
                   style={styles.emptyMenuBtn}
                   onPress={() => { setActiveTab('menuMgmt'); setMgmtView('menu'); }}
                 >
-                  <Ionicons name="add-circle" size={20} color="#000" />
-                  <Text style={{ color: '#000', fontWeight: '900', fontSize: 14 }}>إضافة أصناف الآن</Text>
+                  <Ionicons name="add-circle" size={20} color={COLORS.bg} />
+                  <Text style={{ color: COLORS.bg, fontFamily: FONT.black, fontSize: 14 }}>إضافة أصناف الآن</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -1709,6 +1859,7 @@ const [adminOrders, setAdminOrders] = React.useState([]);
                   <Text style={styles.galleryEditOverlayText}>تغيير</Text>
                 </View>
               </TouchableOpacity>
+              <TextInput style={[styles.menuMgmtInput, { marginTop: 8 }]} placeholder="نص التسمية للصورة الرئيسية" placeholderTextColor="#666" value={galleryImages.mainLabel} onChangeText={(t) => setGalleryImages({ ...galleryImages, mainLabel: t })} />
               <View style={styles.galleryEditSmallCol}>
                 <TouchableOpacity style={styles.galleryEditSmall} onPress={() => pickGalleryImage('small1')}>
                   <Image source={galleryImages.small1 ? { uri: galleryImages.small1 } : require('./assets/asset.jpg')} style={styles.galleryEditImgFull} />
@@ -1716,12 +1867,14 @@ const [adminOrders, setAdminOrders] = React.useState([]);
                     <Ionicons name="camera" size={18} color="#fff" />
                   </View>
                 </TouchableOpacity>
+                <TextInput style={[styles.menuMgmtInput, { marginTop: 8 }]} placeholder="نص التسمية للصورة 1" placeholderTextColor="#666" value={galleryImages.small1Label} onChangeText={(t) => setGalleryImages({ ...galleryImages, small1Label: t })} />
                 <TouchableOpacity style={styles.galleryEditSmall} onPress={() => pickGalleryImage('small2')}>
                   <Image source={galleryImages.small2 ? { uri: galleryImages.small2 } : require('./assets/whySuper.jpg')} style={styles.galleryEditImgFull} />
                   <View style={styles.galleryEditOverlay}>
                     <Ionicons name="camera" size={18} color="#fff" />
                   </View>
                 </TouchableOpacity>
+                <TextInput style={[styles.menuMgmtInput, { marginTop: 8 }]} placeholder="نص التسمية للصورة 2" placeholderTextColor="#666" value={galleryImages.small2Label} onChangeText={(t) => setGalleryImages({ ...galleryImages, small2Label: t })} />
               </View>
             </View>
 
@@ -1750,8 +1903,11 @@ const [adminOrders, setAdminOrders] = React.useState([]);
           <ScrollView style={{ flex: 1, padding: 16 }}>
             <View style={styles.menuMgmtSection}>
               <Text style={styles.menuMgmtTitle}>معلومات التوصيل والتحضير</Text>
+              <Text style={{ color: COLORS.gold, fontSize: 14, fontWeight: '700', marginBottom: 4 }}>التوصيل</Text>
               <TextInput style={styles.menuMgmtInput} placeholder="سعر التوصيل (شيكل)" placeholderTextColor="#666" keyboardType="numeric" value={statSettings.delivery} onChangeText={(t) => setStatSettings({ ...statSettings, delivery: t })} />
+              <Text style={{ color: COLORS.gold, fontSize: 14, fontWeight: '700', marginBottom: 4, marginTop: 12 }}>مدة التحضير</Text>
               <TextInput style={styles.menuMgmtInput} placeholder="مدة التحضير (دقائق)" placeholderTextColor="#666" keyboardType="numeric" value={statSettings.prepTime} onChangeText={(t) => setStatSettings({ ...statSettings, prepTime: t })} />
+              <Text style={{ color: COLORS.gold, fontSize: 14, fontWeight: '700', marginBottom: 4, marginTop: 12 }}>التقييم</Text>
               <TextInput style={styles.menuMgmtInput} placeholder="التقييم (مثال: 4.8)" placeholderTextColor="#666" keyboardType="decimal-pad" value={statSettings.rating} onChangeText={(t) => setStatSettings({ ...statSettings, rating: t })} />
               <TouchableOpacity style={styles.menuMgmtAddBtn} onPress={async () => {
                 try {
@@ -1975,6 +2131,14 @@ const [adminOrders, setAdminOrders] = React.useState([]);
     </View>
   );
 
+  if (!fontsLoaded && !fontError) {
+    return (
+      <View style={{ flex: 1, backgroundColor: COLORS.bg, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={COLORS.gold} />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {activeTab === 'home' && renderHome()}
@@ -2108,7 +2272,7 @@ const [adminOrders, setAdminOrders] = React.useState([]);
               <Text style={styles.menuOptionText}>القائمة</Text>
             </TouchableOpacity>
             <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setShowMenuModal(false); setShowAuthModal(true); }}>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setShowMenuModal(false); if (!currentUser) setShowAuthModal(true); }}>
               <Ionicons name="person" size={20} color={COLORS.gold} />
               <Text style={styles.menuOptionText}>{currentUser ? `مرحباً ${currentUser.name}` : 'دخول / تسجيل'}</Text>
             </TouchableOpacity>
@@ -2116,6 +2280,12 @@ const [adminOrders, setAdminOrders] = React.useState([]);
               <TouchableOpacity style={styles.menuOption} onPress={() => { handleLogout(); setShowMenuModal(false); }}>
                 <Ionicons name="log-out" size={20} color={COLORS.red} />
                 <Text style={styles.menuOptionText}>تسجيل خروج</Text>
+              </TouchableOpacity>
+            )}
+            {currentUser && (
+              <TouchableOpacity style={styles.menuOption} onPress={() => { setShowDeleteAccountModal(true); setShowMenuModal(false); setDeletePassword(''); setDeleteReason(''); }}>
+                <Ionicons name="trash" size={20} color={COLORS.red} />
+                <Text style={[styles.menuOptionText, { color: COLORS.red }]}>حذف الحساب</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowMenuModal(false)}>
@@ -2247,79 +2417,48 @@ const [adminOrders, setAdminOrders] = React.useState([]);
         </View>
       )}
 
-      {phoneStep === 'enterPhone' && (
+      {showDeleteAccountModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>📱 تسجيل برقم الهاتف</Text>
-            <Text style={{ color: '#888', textAlign: 'center', marginBottom: 16 }}>سيصلك كود عبر SMS</Text>
-            {otpError !== '' && (
-              <View style={{ backgroundColor: 'rgba(231,76,60,0.12)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(231,76,60,0.3)' }}>
-                <Text style={{ color: '#ff6b6b', fontSize: 13, textAlign: 'center', fontWeight: '600' }}>⚠ {otpError}</Text>
-                {otpError.includes('السيرفر') && (
-                  <TouchableOpacity style={{ marginTop: 8 }} onPress={() => sendVerificationCode()}>
-                    <Text style={{ color: COLORS.gold, textAlign: 'center', fontWeight: '700', fontSize: 13 }}>إعادة المحاولة</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-            <TextInput 
-              style={styles.customerInput} 
-              placeholder="رقم الهاتف (مثال: 0599123456)" 
-              placeholderTextColor="#666" 
-              value={phoneNumber} 
-              onChangeText={(t) => { setPhoneNumber(t); setOtpError(''); }} 
-              keyboardType="phone-pad" 
-              editable={!otpSending}
-            />
-            <TouchableOpacity style={[styles.confirmOrderBtn, otpSending && { opacity: 0.5 }]} onPress={() => sendVerificationCode()} disabled={otpSending}>
-              {otpSending ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <Text style={styles.confirmOrderBtnText}>إرسال كود التحقق</Text>
-              )}
+            <Text style={styles.modalTitle}>حذف الحساب</Text>
+            <Text style={{ color: COLORS.textMuted, textAlign: 'center', marginBottom: 16, fontSize: 13, lineHeight: 20 }}>
+              سيتم حذف جميع بياناتك نهائياً. لا يمكن التراجع عن هذا الإجراء.
+            </Text>
+            <TextInput style={styles.customerInput} placeholder="لماذا تريد حذف حسابك؟" placeholderTextColor="#666" value={deleteReason} onChangeText={setDeleteReason} />
+            <TextInput style={styles.customerInput} placeholder="أدخل كلمة المرور للتأكيد" placeholderTextColor="#666" value={deletePassword} onChangeText={setDeletePassword} secureTextEntry />
+            <TouchableOpacity style={[styles.confirmOrderBtn, { backgroundColor: COLORS.red }]} onPress={handleDeleteAccount}>
+              <Text style={[styles.confirmOrderBtnText, { color: '#fff' }]}>{'تأكيد الحذف'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => { setPhoneStep('success'); setOtpError(''); }}>
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => { setShowDeleteAccountModal(false); setDeletePassword(''); setDeleteReason(''); }}>
               <Text style={styles.modalCloseBtnText}>إلغاء</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {phoneStep === 'enterCode' && (
+      {showOtpModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>🔢 أدخل الكود</Text>
-            <Text style={{ color: '#888', textAlign: 'center', marginBottom: 16 }}>أدخل الكود المرسل لرقمك</Text>
-            {otpError !== '' && (
-              <View style={{ backgroundColor: 'rgba(231,76,60,0.12)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(231,76,60,0.3)' }}>
-                <Text style={{ color: '#ff6b6b', fontSize: 13, textAlign: 'center', fontWeight: '600' }}>⚠ {otpError}</Text>
-              </View>
+            <Text style={styles.modalTitle}>التحقق من الهاتف</Text>
+            <Text style={{ color: COLORS.textMuted, textAlign: 'center', marginBottom: 16, fontSize: 13, lineHeight: 20 }}>
+              للطلب لأول مرة، أرسلنا رمز تحقق إلى رقم هاتفك. أدخل الرمز للمتابعة.
+            </Text>
+            {!otpSent ? (
+              <TouchableOpacity style={styles.confirmOrderBtn} onPress={sendOtp} disabled={isVerifyingOtp}>
+                <Text style={styles.confirmOrderBtnText}>{isVerifyingOtp ? 'جاري الإرسال...' : 'إرسال الرمز'}</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <TextInput style={[styles.customerInput, { textAlign: 'center' }]} placeholder="أدخل الرمز المكون من 6 أرقام" placeholderTextColor="#666" value={otpCode} onChangeText={setOtpCode} keyboardType="number-pad" maxLength={6} />
+                <TouchableOpacity style={styles.confirmOrderBtn} onPress={verifyOtp} disabled={isVerifyingOtp}>
+                  <Text style={styles.confirmOrderBtnText}>{isVerifyingOtp ? 'جاري التحقق...' : 'تحقق'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={{ marginTop: 10 }} onPress={sendOtp} disabled={isVerifyingOtp}>
+                  <Text style={{ color: COLORS.gold, textAlign: 'center', fontSize: 13 }}>إعادة إرسال الرمز</Text>
+                </TouchableOpacity>
+              </>
             )}
-            <TextInput 
-              style={[styles.customerInput, { fontSize: 24, textAlign: 'center', letterSpacing: 8 }]} 
-              placeholder="000000" 
-              placeholderTextColor="#666" 
-              value={verificationCode} 
-              onChangeText={(t) => { setVerificationCode(t); setOtpError(''); }} 
-              keyboardType="number-pad" 
-              maxLength={6}
-              editable={!otpSending}
-            />
-            <TouchableOpacity style={[styles.confirmOrderBtn, otpSending && { opacity: 0.5 }]} onPress={() => verifyCode()} disabled={otpSending}>
-              {otpSending ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <Text style={styles.confirmOrderBtnText}>تحقق</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity style={{ marginTop: 12 }} onPress={async () => {
-              setVerificationCode('');
-              setOtpError('');
-              await sendVerificationCode(verificationId);
-            }}>
-              <Text style={{ color: COLORS.gold, textAlign: 'center' }}>إعادة إرسال الكود</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => { setPhoneStep('success'); setOtpError(''); }}>
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => { setShowOtpModal(false); setOtpCode(''); setOtpSent(false); }}>
               <Text style={styles.modalCloseBtnText}>إلغاء</Text>
             </TouchableOpacity>
           </View>
@@ -2352,7 +2491,7 @@ const styles = StyleSheet.create({
   statCard: { flex: 1, backgroundColor: '#1c1810', borderWidth: 1, borderColor: '#2a2418', borderRadius: 20, padding: 14, alignItems: 'center', shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
   statIconWrap: { width: 40, height: 40, backgroundColor: COLORS.gold, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
   statVal: { fontSize: 18, fontWeight: '900', color: COLORS.gold },
-  statLabel: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
+  statLabel: { fontSize: 11, color: COLORS.textMuted, marginTop: 2, fontFamily: FONT.medium },
   gallerySection: { marginHorizontal: 16, marginTop: 20 },
   galleryTitle: { fontSize: 20, fontWeight: '900', color: '#fff', marginBottom: 12, textAlign: 'center' },
   galleryLineWrap: { alignItems: 'center', marginBottom: 16 },
@@ -2368,7 +2507,7 @@ const styles = StyleSheet.create({
   couponPremium: { marginHorizontal: 16, marginTop: 20, backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: '#2a2418', flexDirection: 'row', overflow: 'hidden' },
   couponPremiumBadge: { backgroundColor: COLORS.gold, paddingHorizontal: 20, paddingVertical: 24, justifyContent: 'center', alignItems: 'center', minWidth: 90 },
   couponPremiumPct: { fontSize: 28, fontWeight: '900', color: COLORS.bg },
-  couponPremiumOff: { fontSize: 12, fontWeight: '700', color: COLORS.bg, marginTop: 2 },
+  couponPremiumOff: { fontSize: 12, color: COLORS.bg, marginTop: 2, fontFamily: FONT.bold },
   couponPremiumInfo: { flex: 1, padding: 16, alignItems: 'flex-end' },
   couponPremiumTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textMuted, marginBottom: 4 },
   couponPremiumDesc: { fontSize: 11, color: COLORS.textMuted, marginBottom: 12, textAlign: 'right' },
@@ -2376,15 +2515,15 @@ const styles = StyleSheet.create({
   couponPremiumCodeBox: { flex: 1, backgroundColor: COLORS.bg, borderRadius: 10, borderWidth: 1, borderColor: '#333', paddingHorizontal: 12, paddingVertical: 8 },
   couponPremiumCode: { fontSize: 12, fontWeight: '800', color: COLORS.gold, letterSpacing: 1, textAlign: 'center' },
   couponPremiumCopy: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.gold, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 },
-  couponPremiumCopyText: { fontSize: 11, fontWeight: '800', color: COLORS.bg },
+  couponPremiumCopyText: { fontSize: 11, color: COLORS.bg, fontFamily: FONT.extra },
 
   loyaltyHow: { marginHorizontal: 16, marginTop: 20, backgroundColor: '#1c1810', borderRadius: 20, borderWidth: 1, borderColor: '#2a2418', padding: 20 },
   loyaltyHowTitle: { fontSize: 20, fontWeight: '900', color: '#fff', marginBottom: 18, textAlign: 'center' },
   loyaltyHowStep: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 },
   loyaltyHowStepNum: { width: 32, height: 32, backgroundColor: COLORS.gold, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  loyaltyHowStepNumText: { fontSize: 14, fontWeight: '900', color: COLORS.bg },
+  loyaltyHowStepNumText: { fontSize: 14, color: COLORS.bg, fontFamily: FONT.black },
   loyaltyHowStepInfo: { flex: 1, alignItems: 'flex-end' },
-  loyaltyHowStepTitle: { fontSize: 14, fontWeight: '800', color: '#fff', marginBottom: 2 },
+  loyaltyHowStepTitle: { fontSize: 14, color: '#fff', marginBottom: 2, fontFamily: FONT.bold },
   loyaltyHowStepDesc: { fontSize: 11, color: COLORS.textMuted },
   loyaltyProgressCard: { marginHorizontal: 16, marginTop: 12, backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: '#2a2418', padding: 20 },
   loyaltyProgressHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
@@ -2396,7 +2535,7 @@ const styles = StyleSheet.create({
   loyaltyProgressRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
   loyaltyProgressAmount: { alignItems: 'flex-end' },
   loyaltyProgressAmountLabel: { fontSize: 11, color: COLORS.textMuted, marginBottom: 2 },
-  loyaltyProgressAmountVal: { fontSize: 20, fontWeight: '900', color: COLORS.gold },
+  loyaltyProgressAmountVal: { fontSize: 20, color: COLORS.gold, fontFamily: FONT.black },
   loyaltyProgressTarget: { alignItems: 'flex-end' },
   loyaltyProgressTargetLabel: { fontSize: 11, color: COLORS.textMuted, marginBottom: 2 },
   loyaltyProgressTargetVal: { fontSize: 20, fontWeight: '900', color: COLORS.textMuted },
@@ -2406,7 +2545,7 @@ const styles = StyleSheet.create({
   loyaltyProgressDotWrap: { position: 'absolute', top: 0, left: 0, right: 0, height: 10 },
   loyaltyProgressDot: { position: 'absolute', width: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.gold, top: -3, marginLeft: -8, borderWidth: 2, borderColor: COLORS.bg },
   loyaltyRedeemBtn: { backgroundColor: COLORS.gold, borderRadius: 14, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
-  loyaltyRedeemText: { fontSize: 14, fontWeight: '800', color: COLORS.bg },
+  loyaltyRedeemText: { fontSize: 14, color: COLORS.bg, fontFamily: FONT.extra },
   loyaltyRemainRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   loyaltyRemainText: { fontSize: 12, color: COLORS.textMuted, textAlign: 'center' },
   contactSection: { marginHorizontal: 16, marginTop: 32 },
@@ -2497,43 +2636,43 @@ const styles = StyleSheet.create({
   couponBtnText: { fontSize: 14, fontWeight: '900', color: '#000' },
   couponSuccessText: { fontSize: 12, fontWeight: '700', color: COLORS.green, marginTop: 10, textAlign: 'right' },
   catsScroll: { paddingHorizontal: 16, marginBottom: 14 },
-  catPill: { flexShrink: 0, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 30, borderWidth: 1.5, borderColor: '#333', marginRight: 8, backgroundColor: COLORS.card },
-  catPillActive: { backgroundColor: COLORS.gold, borderColor: COLORS.gold },
-  catPillText: { fontSize: 13, fontWeight: '700', color: COLORS.textMuted, textAlign: 'center' },
+  catPill: { flexShrink: 0, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 24, borderWidth: 1, borderColor: COLORS.line, marginRight: 8, backgroundColor: COLORS.card },
+  catPillActive: { backgroundColor: COLORS.gold, borderColor: COLORS.gold, shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 5 },
+  catPillText: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', fontFamily: FONT.bold },
   catPillTextActive: { color: '#000' },
   menuList: { paddingHorizontal: 16, gap: 12, paddingBottom: 20 },
   menuCouponCard: { margin: 16, backgroundColor: COLORS.card, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: COLORS.gold },
-  menuCouponTitle: { fontSize: 18, fontWeight: '700', color: COLORS.gold, textAlign: 'center', marginBottom: 14 },
+  menuCouponTitle: { fontSize: 18, color: COLORS.gold, textAlign: 'center', marginBottom: 14, fontFamily: FONT.bold },
   menuCouponRow: { flexDirection: 'row', gap: 10 },
   menuCouponInput: { flex: 1, backgroundColor: '#111', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, color: '#fff', fontSize: 14, borderWidth: 1, borderColor: '#333' },
   menuCouponBtn: { backgroundColor: COLORS.gold, borderRadius: 12, paddingHorizontal: 20, justifyContent: 'center' },
   menuCouponBtnText: { fontSize: 14, fontWeight: '700', color: '#000' },
   menuCouponSuccess: { fontSize: 13, color: COLORS.green, textAlign: 'center', marginTop: 10 },
   menuCouponError: { fontSize: 13, color: COLORS.red, textAlign: 'center', marginTop: 10 },
-  menuCard: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: '#2a2418', borderRadius: 16, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12, flexWrap: 'wrap' },
+  menuCard: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.line, borderRadius: 22, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 14, flexWrap: 'wrap', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.22, shadowRadius: 14, elevation: 4 },
   menuCardHighlighted: { backgroundColor: '#2a2410', borderWidth: 2, borderColor: COLORS.gold, borderRadius: 16, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12 },
-  menuCardImage: { width: 80, height: 80, borderRadius: 12, resizeMode: 'cover' },
+  menuCardImage: { width: 88, height: 88, borderRadius: 18, resizeMode: 'cover' },
   menuCardImagePlaceholder: { width: 80, height: 80, borderRadius: 12, backgroundColor: '#2a2418', justifyContent: 'center', alignItems: 'center' },
   menuCardInfo: { flex: 1, alignItems: 'flex-end' },
-  menuCardName: { fontSize: 15, fontWeight: '900', color: '#fff' },
-  menuCardDesc: { fontSize: 11, color: COLORS.textMuted, marginTop: 2, textAlign: 'right' },
+  menuCardName: { fontSize: 16, color: '#fff', fontFamily: FONT.extra },
+  menuCardDesc: { fontSize: 12, color: COLORS.textMuted, marginTop: 4, textAlign: 'right', fontFamily: FONT.regular, lineHeight: 18 },
   menuCardExpanded: { backgroundColor: COLORS.bg, borderRadius: 8, padding: 8, marginTop: 8 },
   menuCardDescExpanded: { fontSize: 12, color: COLORS.textMuted, textAlign: 'right', lineHeight: 18 },
   menuCardBadge: { position: 'absolute', top: 10, left: 10, backgroundColor: COLORS.gold, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 },
   menuCardBadgeNew: { backgroundColor: COLORS.red },
   menuCardBadgeText: { fontSize: 9, fontWeight: '900', color: '#000' },
   menuCardFooter: { marginTop: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
-  menuCardPrice: { fontSize: 17, fontWeight: '900', color: COLORS.gold },
-  addBtn: { width: 30, height: 30, backgroundColor: COLORS.gold, borderRadius: 50, justifyContent: 'center', alignItems: 'center' },
-  addBtnText: { fontSize: 20, fontWeight: '700', color: '#000' },
+  menuCardPrice: { fontSize: 18, color: COLORS.gold, fontFamily: FONT.black },
+  addBtn: { width: 38, height: 38, backgroundColor: COLORS.gold, borderRadius: 19, justifyContent: 'center', alignItems: 'center', shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4 },
+  addBtnText: { fontSize: 22, fontWeight: '700', color: '#000', marginTop: -2 },
   loyaltyMenuBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 8, backgroundColor: '#f0c040', borderRadius: 12, height: 30 },
   menuPageHeader: { padding: 16, paddingTop: 50 },
-  menuPageTitle: { fontSize: 20, fontWeight: '900', color: '#fff', marginBottom: 12, textAlign: 'center' },
+  menuPageTitle: { fontSize: 24, color: '#fff', marginBottom: 14, textAlign: 'center', fontFamily: FONT.black },
   menuSearch: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.card, borderWidth: 1, borderColor: '#333', borderRadius: 30, paddingHorizontal: 16, paddingVertical: 10 },
   searchInput: { flex: 1, backgroundColor: 'transparent', color: '#fff', fontSize: 14, textAlign: 'right' },
   ordersHeader: { padding: 20, paddingTop: 50, alignItems: 'flex-end' },
-  ordersTitle: { fontSize: 22, fontWeight: '900', color: '#fff', textAlign: 'center' },
-  ordersSub: { fontSize: 13, color: COLORS.textMuted, marginTop: 4, textAlign: 'center' },
+  ordersTitle: { fontSize: 24, color: '#fff', textAlign: 'center', fontFamily: FONT.black },
+  ordersSub: { fontSize: 13, color: COLORS.textMuted, marginTop: 6, textAlign: 'center', fontFamily: FONT.regular },
   orderTabs: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 16 },
   orderTab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: '#333' },
   orderTabActive: { borderBottomColor: COLORS.gold },
@@ -2555,10 +2694,10 @@ const styles = StyleSheet.create({
   reorderBtn: { backgroundColor: COLORS.gold, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6 },
   reorderBtnText: { fontSize: 12, fontWeight: '900', color: '#000' },
   emptyOrdersText: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', marginTop: 40 },
-  customerInput: { backgroundColor: '#1c1810', borderWidth: 1, borderColor: '#333', borderRadius: 10, padding: 12, color: '#fff', fontSize: 14, marginBottom: 12, textAlign: 'right' },
+  customerInput: { backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.line, borderRadius: 14, padding: 14, color: '#fff', fontSize: 15, marginBottom: 12, textAlign: 'right', fontFamily: FONT.regular },
   completeOrderBtn: { backgroundColor: COLORS.green, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: 10 },
   completeOrderBtnText: { fontSize: 13, fontWeight: '900', color: '#fff' },
-  confirmOrderBtn: { backgroundColor: COLORS.gold, borderRadius: 16, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
+  confirmOrderBtn: { backgroundColor: COLORS.gold, borderRadius: 18, paddingVertical: 16, alignItems: 'center', marginTop: 16, shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 6 },
   adminPrepRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
   adminPrepInput: { flex: 1, backgroundColor: '#111', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: '#fff', fontSize: 14, borderWidth: 1, borderColor: '#333', textAlign: 'center' },
   adminPrepBtn: { backgroundColor: COLORS.gold, borderRadius: 10, paddingHorizontal: 16, justifyContent: 'center' },
@@ -2567,33 +2706,32 @@ const styles = StyleSheet.create({
   whatsappBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
   pickImageBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: COLORS.gold, borderRadius: 12, paddingVertical: 10, marginTop: 12 },
   verifySubText: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', marginBottom: 16, marginTop: -10 },
-  verifyCodeInput: { backgroundColor: '#111', borderRadius: 12, paddingHorizontal: 20, paddingVertical: 14, color: '#fff', fontSize: 24, fontWeight: '900', textAlign: 'center', borderWidth: 1, borderColor: '#333', marginBottom: 16, letterSpacing: 8 },
 
-  confirmOrderBtnText: { fontSize: 16, fontWeight: '900', color: '#000' },
-  modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', zIndex: 300 },
-  modalCard: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.gold, borderRadius: 20, padding: 24, width: '85%' },
-  modalTitle: { fontSize: 20, fontWeight: '900', color: '#fff', textAlign: 'center', marginBottom: 20 },
+  confirmOrderBtnText: { fontSize: 16, color: '#000', fontFamily: FONT.black },
+  modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center', zIndex: 300, paddingHorizontal: 24 },
+  modalCard: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.line, borderRadius: 28, padding: 26, width: '100%', maxWidth: 420, shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.5, shadowRadius: 32, elevation: 24 },
+  modalTitle: { fontSize: 21, color: '#fff', textAlign: 'center', marginBottom: 20, fontFamily: FONT.black },
   paymentOption: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1810', borderWidth: 1, borderColor: '#2a2418', borderRadius: 12, padding: 14, marginBottom: 12 },
   paymentOptionText: { fontSize: 16, fontWeight: '700', color: '#fff' },
   modalCloseBtn: { alignItems: 'center', marginTop: 10 },
   modalCloseBtnText: { fontSize: 14, color: COLORS.textMuted },
   menuOption: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#2a2418' },
-  menuOptionText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  menuOptionText: { fontSize: 16, color: '#fff', fontFamily: FONT.bold },
   menuDivider: { height: 1, backgroundColor: '#333', marginVertical: 8 },
-  cartOverlay: { position: 'absolute', bottom: 70, left: 16, right: 16, zIndex: 50 },
+  cartOverlay: { position: 'absolute', bottom: 98, left: 16, right: 16, zIndex: 50 },
   cartBar: { backgroundColor: COLORS.gold, borderRadius: 30, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 32, elevation: 8 },
   cartBarTotal: { fontSize: 16, fontWeight: '900', color: '#000' },
   cartBarText: { fontSize: 14, fontWeight: '900', color: '#000' },
   cartBarInfo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   cartCount: { width: 26, height: 26, backgroundColor: '#000', borderRadius: 50, justifyContent: 'center', alignItems: 'center' },
   cartCountText: { fontSize: 12, fontWeight: '900', color: COLORS.gold },
-  toast: { position: 'absolute', bottom: 150, alignSelf: 'center', backgroundColor: COLORS.gold, borderWidth: 1, borderColor: '#000', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 30, zIndex: 200 },
-  toastText: { fontSize: 13, fontWeight: '700', color: '#000' },
-  bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 70, paddingBottom: 8, backgroundColor: '#0e0c0a', borderTopWidth: 1, borderTopColor: '#2a2418', flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', zIndex: 100 },
-  navBtn: { alignItems: 'center', paddingVertical: 8 },
-  navBtnActive: {},
-  navBtnText: { fontSize: 11, fontWeight: '700', color: COLORS.textMuted, marginTop: 4 },
-  navBtnTextActive: { color: COLORS.gold },
+  toast: { position: 'absolute', bottom: 150, alignSelf: 'center', maxWidth: '90%', backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.line, paddingHorizontal: 22, paddingVertical: 14, borderRadius: 18, zIndex: 200, shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.45, shadowRadius: 24, elevation: 12 },
+  toastText: { fontSize: 14, color: '#fff', fontFamily: FONT.medium, textAlign: 'center' },
+  bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 86, paddingBottom: 24, paddingTop: 10, paddingHorizontal: 8, backgroundColor: 'rgba(11,10,9,0.97)', borderTopWidth: 1, borderTopColor: COLORS.line, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', zIndex: 100, shadowColor: '#000', shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.35, shadowRadius: 20, elevation: 24 },
+  navBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 18 },
+  navBtnActive: { backgroundColor: 'rgba(255,193,7,0.12)' },
+  navBtnText: { fontSize: 11, color: COLORS.textMuted, marginTop: 4, fontFamily: FONT.medium },
+  navBtnTextActive: { color: COLORS.gold, fontFamily: FONT.bold },
   adminSectionBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: COLORS.card, marginHorizontal: 16, marginTop: 16, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: COLORS.gold },
   adminSectionBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
   adminSectionTitle: { fontSize: 18, fontWeight: '900', color: COLORS.gold, marginHorizontal: 16, marginTop: 20, marginBottom: 10 },
@@ -2606,7 +2744,7 @@ const styles = StyleSheet.create({
   optionModalHeader: { flexDirection: 'row', alignItems: 'center', padding: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#222' },
   optionModalIconWrap: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#1c1810', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#2a2418' },
   optionModalHeaderInfo: { flex: 1, marginHorizontal: 12 },
-  optionModalHeaderTitle: { fontSize: 18, fontWeight: '900', color: '#fff' },
+  optionModalHeaderTitle: { fontSize: 18, color: '#fff', fontFamily: FONT.black },
   optionModalHeaderSub: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
   optionModalCloseBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1c1810', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#2a2418' },
   optionModalScroll: { maxHeight: 240, paddingHorizontal: 16, paddingTop: 12 },
@@ -2626,11 +2764,11 @@ const styles = StyleSheet.create({
   optionCancelBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.textMuted },
   optionTotalBox: { flex: 1, alignItems: 'center' },
   optionTotalLabel: { fontSize: 11, color: COLORS.textMuted, fontWeight: '600', marginBottom: 2 },
-  optionTotalPrice: { fontSize: 20, fontWeight: '900', color: COLORS.gold },
+  optionTotalPrice: { fontSize: 20, color: COLORS.gold, fontFamily: FONT.black },
   optionAddBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.gold, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 20 },
-  optionAddBtnText: { fontSize: 14, fontWeight: '900', color: '#000' },
+  optionAddBtnText: { fontSize: 14, color: '#000', fontFamily: FONT.black },
   menuMgmtSection: { backgroundColor: COLORS.card, borderRadius: 16, padding: 16, marginBottom: 20 },
-  menuMgmtTitle: { fontSize: 18, fontWeight: '900', color: COLORS.gold, marginBottom: 16 },
+  menuMgmtTitle: { fontSize: 18, color: COLORS.gold, marginBottom: 16, fontFamily: FONT.black },
   menuMgmtInput: { backgroundColor: '#111', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, color: '#fff', fontSize: 14, marginBottom: 12, borderWidth: 1, borderColor: '#333' },
   menuMgmtCatRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   menuMgmtCatBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#333', alignItems: 'center' },
@@ -2638,7 +2776,7 @@ const styles = StyleSheet.create({
   menuMgmtCatBtnText: { fontSize: 13, color: COLORS.textMuted },
   menuMgmtCatBtnTextActive: { color: '#000', fontWeight: '700' },
   menuMgmtAddBtn: { backgroundColor: COLORS.gold, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
-  menuMgmtAddBtnText: { fontSize: 16, fontWeight: '900', color: '#000' },
+  menuMgmtAddBtnText: { fontSize: 16, color: '#000', fontFamily: FONT.black },
   menuMgmtItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, borderRadius: 12, padding: 16, marginBottom: 10, gap: 12 },
   menuMgmtItemImage: { width: 48, height: 48, borderRadius: 8, resizeMode: 'cover' },
   menuMgmtItemName: { fontSize: 15, fontWeight: '700', color: '#fff', marginBottom: 4 },
@@ -2654,10 +2792,10 @@ const styles = StyleSheet.create({
   },
   emptyMenuTitle: {
     fontSize: 22,
-    fontWeight: '900',
     color: '#fff',
     marginTop: 16,
     textAlign: 'center',
+    fontFamily: FONT.black,
   },
   emptyMenuText: {
     fontSize: 14,
@@ -2701,12 +2839,228 @@ const styles = StyleSheet.create({
   galleryEditOverlayText: { fontSize: 12, color: '#fff', fontWeight: '700', marginTop: 4 },
   galleryEditSection: { marginBottom: 16 },
   mgmtDashboardHeader: { padding: 20, paddingTop: 50, alignItems: 'flex-end' },
-  mgmtDashboardTitle: { fontSize: 22, fontWeight: '900', color: '#fff' },
+  mgmtDashboardTitle: { fontSize: 24, color: '#fff', fontFamily: FONT.black },
   mgmtDashboardSub: { fontSize: 13, color: COLORS.textMuted, marginTop: 4 },
   mgmtCardsGrid: { gap: 10 },
   mgmtCardNew: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1810', borderRadius: 16, borderWidth: 1, borderColor: '#2a2418', padding: 16, gap: 14 },
   mgmtCardNewIcon: { width: 44, height: 44, backgroundColor: COLORS.bg, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#333' },
   mgmtCardNewInfo: { flex: 1, alignItems: 'flex-end' },
-  mgmtCardNewLabel: { fontSize: 15, fontWeight: '900', color: '#fff', marginBottom: 2 },
+  mgmtCardNewLabel: { fontSize: 15, color: '#fff', marginBottom: 2, fontFamily: FONT.extra },
   mgmtCardNewDesc: { fontSize: 11, color: COLORS.textMuted },
+hero: { height: 420, position: 'relative', justifyContent: 'flex-end', overflow: 'hidden', borderBottomLeftRadius: 32, borderBottomRightRadius: 32 },
+  heroImage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
+  heroOverlayTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 140, backgroundColor: 'rgba(14,12,10,0.45)' },
+  heroOverlayBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 260, backgroundColor: 'rgba(14,12,10,0.85)' },
+  homeHeader: { position: 'absolute', top: Platform.OS === 'ios' ? 56 : 36, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', zIndex: 10, paddingHorizontal: 20 },
+  logoBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(14,12,10,0.55)', borderRadius: 30, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  logoImg: { width: 28, height: 28, resizeMode: 'contain', marginRight: 8 },
+  logoName: { fontSize: 18, color: COLORS.gold, fontFamily: FONT.black, letterSpacing: 0.3 },
+  headerIcons: { flexDirection: 'row', gap: 10 },
+  hicon: { width: 40, height: 40, backgroundColor: 'rgba(14,12,10,0.55)', borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  heroText: { position: 'absolute', bottom: 84, right: 20, left: 20, alignItems: 'flex-end' },
+  heroTag: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(39,174,96,0.15)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: 'rgba(39,174,96,0.3)', alignSelf: 'flex-end', marginBottom: 12 },
+  heroTagDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.green },
+  heroTagText: { fontSize: 11, color: COLORS.green, fontFamily: FONT.bold },
+  heroTitle: { fontSize: 38, color: '#fff', lineHeight: 54, textAlign: 'right', fontFamily: FONT.black },
+  heroSub: { fontSize: 14, color: COLORS.textMuted, marginTop: 10, textAlign: 'right', fontFamily: FONT.regular, lineHeight: 24 },
+  heroCta: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.gold, borderRadius: 30, paddingHorizontal: 24, paddingVertical: 15, marginTop: 20, alignSelf: 'flex-start', shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.38, shadowRadius: 18, elevation: 9 },
+  heroCtaText: { fontSize: 15, color: COLORS.bg, fontFamily: FONT.extra },
+  notifDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.red, borderWidth: 1, borderColor: COLORS.bg },
+  searchBarInline: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(14,12,10,0.7)', borderRadius: 30, paddingHorizontal: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  searchBarInlineInput: { flex: 1, color: '#fff', fontSize: 14, paddingVertical: 8, textAlign: 'right' },
+  statsRow: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 4, gap: 10 },
+  statCard: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.card, borderRadius: 20, padding: 14, borderWidth: 1, borderColor: COLORS.line, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 14, elevation: 4 },
+  statIconWrap: { width: 36, height: 36, backgroundColor: COLORS.gold, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  statText: { flex: 1, alignItems: 'flex-end' },
+  statVal: { fontSize: 17, color: COLORS.gold, fontFamily: FONT.black },
+  statLabel: { fontSize: 11, color: COLORS.textMuted, marginTop: 2, fontFamily: FONT.medium },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginTop: 28, marginBottom: 14 },
+  sectionTitle: { fontSize: 22, color: '#fff', textAlign: 'right', fontFamily: FONT.black },
+  sectionLink: { fontSize: 13, color: COLORS.gold, fontFamily: FONT.bold },
+  featuredList: { paddingHorizontal: 16, gap: 12 },
+  featuredCard: { width: 168, backgroundColor: COLORS.card, borderRadius: 24, padding: 12, marginRight: 12, borderWidth: 1, borderColor: COLORS.line, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 18, elevation: 5 },
+  featuredImageWrap: { width: '100%', height: 120, borderRadius: 18, backgroundColor: '#151210', overflow: 'hidden' },
+  featuredImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  featuredInfo: { marginTop: 12, alignItems: 'flex-end' },
+  featuredName: { fontSize: 14, color: '#fff', textAlign: 'right', fontFamily: FONT.bold },
+  featuredPrice: { fontSize: 16, color: COLORS.gold, marginTop: 4, fontFamily: FONT.black },
+  featuredActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
+  featuredLoyaltyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.gold, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 5 },
+  featuredLoyaltyText: { fontSize: 11, fontWeight: '800', color: COLORS.bg },
+  featuredAddBtn: { width: 32, height: 32, backgroundColor: 'rgba(245,197,24,0.15)', borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(245,197,24,0.2)' },
+  featuredSkeletonRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 12 },
+  skeleton: { backgroundColor: 'rgba(255,255,255,0.06)' },
+  skeletonText: { height: 12, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.06)' },
+  loginWarningChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(231,76,60,0.12)', borderRadius: 10, paddingVertical: 6, paddingHorizontal: 8, marginTop: 10, alignSelf: 'center', borderWidth: 1, borderColor: 'rgba(231,76,60,0.3)' },
+  loginWarningText: { color: '#ff6b6b', fontSize: 11, fontWeight: '600' },
+  gallerySection: { marginHorizontal: 16, marginTop: 28 },
+  galleryGrid: { flexDirection: 'row', gap: 12, height: 240 },
+  galleryMain: { flex: 3, borderRadius: 28, overflow: 'hidden' },
+  galleryMainImg: { width: '100%', height: '100%', resizeMode: 'cover' },
+  gallerySmallCol: { flex: 2, gap: 12 },
+  gallerySmall: { flex: 1, borderRadius: 24, overflow: 'hidden' },
+  gallerySmallImg: { width: '100%', height: '100%', resizeMode: 'cover' },
+  couponPremium: { marginHorizontal: 16, marginTop: 14, backgroundColor: COLORS.card, borderRadius: 28, borderWidth: 1, borderColor: 'rgba(255,193,7,0.16)', flexDirection: 'row', overflow: 'hidden', position: 'relative', shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 20, elevation: 6 },
+  couponPremiumBadge: { backgroundColor: COLORS.gold, paddingHorizontal: 18, paddingVertical: 22, justifyContent: 'center', alignItems: 'center', minWidth: 80 },
+  couponPremiumPct: { fontSize: 28, color: COLORS.bg, fontFamily: FONT.black },
+  couponPremiumOff: { fontSize: 12, color: COLORS.bg, marginTop: 2, fontFamily: FONT.bold },
+  couponPremiumInfo: { flex: 1, padding: 18, alignItems: 'flex-end' },
+  couponPremiumTitle: { fontSize: 14, color: '#fff', marginBottom: 4, fontFamily: FONT.bold },
+  couponPremiumDesc: { fontSize: 11, color: COLORS.textMuted, marginBottom: 14, textAlign: 'right' },
+  couponPremiumCodeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%' },
+  couponPremiumCodeBox: { flex: 1, backgroundColor: COLORS.bg, borderRadius: 12, borderWidth: 1, borderColor: '#333', paddingHorizontal: 12, paddingVertical: 10 },
+  couponPremiumCode: { fontSize: 14, color: COLORS.gold, letterSpacing: 2, textAlign: 'center', fontFamily: FONT.bold },
+  couponPremiumCopy: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.gold, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  couponPremiumCopyText: { fontSize: 11, color: COLORS.bg, fontFamily: FONT.extra },
+  couponShimmer: { position: 'absolute', top: 0, left: 0, width: 80, height: '100%', backgroundColor: 'rgba(255,255,255,0.08)' },
+  couponEmpty: { padding: 24, alignItems: 'center', width: '100%' },
+  couponEmptyText: { fontSize: 14, color: COLORS.textMuted, marginTop: 10 },
+  loyaltySection: { marginTop: 28 },
+  loyaltyHow: { marginHorizontal: 16, marginTop: 4, backgroundColor: COLORS.card, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', padding: 20 },
+  loyaltyHowStep: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 },
+  loyaltyHowStepNum: { width: 34, height: 34, backgroundColor: COLORS.gold, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
+  loyaltyHowStepNumText: { fontSize: 14, color: COLORS.bg, fontFamily: FONT.black },
+  loyaltyHowStepInfo: { flex: 1, alignItems: 'flex-end' },
+  loyaltyHowStepTitle: { fontSize: 14, color: '#fff', marginBottom: 2, fontFamily: FONT.bold },
+  loyaltyHowStepDesc: { fontSize: 12, color: COLORS.textMuted },
+  loyaltyProgressCard: { marginHorizontal: 16, marginTop: 12, backgroundColor: COLORS.card, borderRadius: 24, borderWidth: 1, borderColor: COLORS.line, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 18, elevation: 5 },
+  loyaltyProgressHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  loyaltyProgressRight: { alignItems: 'flex-end', flex: 1, paddingLeft: 12 },
+  loyaltyProgressTitle: { fontSize: 16, color: '#fff', textAlign: 'right', fontFamily: FONT.black },
+  loyaltyProgressSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 4, textAlign: 'right', lineHeight: 16 },
+  loyaltyBadge: { backgroundColor: COLORS.gold, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center' },
+  loyaltyBadgeValue: { fontSize: 20, color: COLORS.bg, fontFamily: FONT.black },
+  loyaltyBadgeLabel: { fontSize: 10, color: COLORS.bg, marginTop: -2, fontFamily: FONT.bold },
+  loyaltyProgressDivider: { height: 1, backgroundColor: '#2a2418', marginVertical: 14 },
+  loyaltyProgressRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
+  loyaltyProgressAmount: { alignItems: 'flex-end' },
+  loyaltyProgressAmountLabel: { fontSize: 11, color: COLORS.textMuted, marginBottom: 2 },
+  loyaltyProgressAmountVal: { fontSize: 20, color: COLORS.gold, fontFamily: FONT.black },
+  loyaltyProgressTarget: { alignItems: 'flex-end' },
+  loyaltyProgressTargetLabel: { fontSize: 11, color: COLORS.textMuted, marginBottom: 2 },
+  loyaltyProgressTargetVal: { fontSize: 20, fontWeight: '900', color: COLORS.textMuted },
+  loyaltyProgressBarWrap: { marginBottom: 14, position: 'relative' },
+  loyaltyProgressBg: { height: 10, backgroundColor: COLORS.bg, borderRadius: 5, overflow: 'hidden' },
+  loyaltyProgressFill: { height: '100%', backgroundColor: COLORS.gold, borderRadius: 5 },
+  loyaltyProgressDotWrap: { position: 'absolute', top: 0, left: 0, right: 0, height: 10 },
+  loyaltyProgressDot: { position: 'absolute', width: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.gold, top: -3, marginLeft: -8, borderWidth: 2, borderColor: COLORS.bg },
+  loyaltyRedeemBtn: { backgroundColor: COLORS.gold, borderRadius: 16, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  loyaltyRedeemText: { fontSize: 14, color: COLORS.bg, fontFamily: FONT.extra },
+  loyaltyRemainRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  loyaltyRemainText: { fontSize: 12, color: COLORS.textMuted, textAlign: 'center' },
+  contactSection: { marginHorizontal: 16, marginTop: 28 },
+  contactCard: { backgroundColor: COLORS.card, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', overflow: 'hidden' },
+  contactRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18, paddingHorizontal: 16, gap: 14 },
+  contactDivider: { height: 1, backgroundColor: '#2a2418', marginHorizontal: 16 },
+  contactIconBox: { width: 46, height: 46, backgroundColor: COLORS.gold, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  contactInfo: { flex: 1, alignItems: 'flex-start' },
+  contactLabel: { fontSize: 12, color: COLORS.textMuted, marginBottom: 2 },
+  contactText: { fontSize: 15, color: '#fff', fontWeight: '600', textAlign: 'right', lineHeight: 22 },
+  menuCtaCard: { marginHorizontal: 16, marginTop: 28, backgroundColor: COLORS.card, borderRadius: 24, padding: 22, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(245,197,24,0.12)' },
+  menuCtaTitle: { fontSize: 16, fontWeight: '900', color: '#fff', marginBottom: 4 },
+  menuCtaSub: { fontSize: 12, color: COLORS.textMuted },
+  menuCtaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.gold, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 },
+  menuCtaBtnText: { fontSize: 13, fontWeight: '900', color: COLORS.bg },
+  searchEmpty: { alignItems: 'center', paddingVertical: 24 },
+  searchEmptyText: { color: COLORS.textMuted, marginTop: 8, fontSize: 13 },
+  notifBody: { backgroundColor: 'rgba(245,197,24,0.08)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(245,197,24,0.15)' },
+  notifBodyTitle: { color: COLORS.gold, fontSize: 13, fontWeight: '800', marginBottom: 4 },
+  notifBodyText: { color: '#fff', fontSize: 12 },
+
+  /* ============================================================
+     v2 PREMIUM REDESIGN — new section concepts (namespaced x*)
+     ============================================================ */
+  // Hero (floating immersive card)
+  xHero: { marginHorizontal: 16, marginTop: 8, height: 360, borderRadius: 30, overflow: 'hidden', position: 'relative', backgroundColor: COLORS.surface, shadowColor: '#000', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.45, shadowRadius: 28, elevation: 14 },
+  // Glass facts bar (overlaps hero)
+  xStatsBar: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 28, marginTop: -34, backgroundColor: COLORS.card, borderRadius: 24, borderWidth: 1, borderColor: COLORS.line, paddingVertical: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.45, shadowRadius: 22, elevation: 14, zIndex: 5 },
+  xStatCell: { flex: 1, alignItems: 'center' },
+  xStatDivider: { width: 1, alignSelf: 'stretch', backgroundColor: COLORS.line, marginVertical: 6 },
+  xStatIcon: { marginBottom: 6 },
+  xStatVal: { color: COLORS.gold, fontFamily: FONT.black, fontSize: 16 },
+  xStatLabel: { color: COLORS.textMuted, fontFamily: FONT.medium, fontSize: 11, marginTop: 3 },
+  // Featured (poster cards)
+  xFeatCard: { width: 200, marginRight: 14 },
+  xFeatImageWrap: { width: '100%', height: 230, borderRadius: 26, overflow: 'hidden', backgroundColor: COLORS.surface, position: 'relative' },
+  xFeatImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  xFeatPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  xFeatScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '72%', backgroundColor: 'rgba(11,10,9,0.42)' },
+  xFeatScrim2: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '42%', backgroundColor: 'rgba(11,10,9,0.74)' },
+  xFeatPrice: { position: 'absolute', top: 12, left: 12, backgroundColor: COLORS.gold, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6, shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 5 },
+  xFeatPriceTxt: { color: COLORS.bg, fontFamily: FONT.black, fontSize: 14 },
+  xFeatNameWrap: { position: 'absolute', left: 14, right: 14, bottom: 14 },
+  xFeatName: { color: '#fff', fontFamily: FONT.bold, fontSize: 16, textAlign: 'right' },
+  // Coupon ticket / voucher
+  xTicket: { marginHorizontal: 16, marginTop: 4, flexDirection: 'row', backgroundColor: COLORS.card, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,193,7,0.18)', overflow: 'hidden', shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.16, shadowRadius: 20, elevation: 6 },
+  xTicketStub: { width: 100, backgroundColor: COLORS.gold, alignItems: 'center', justifyContent: 'center', paddingVertical: 24, overflow: 'hidden' },
+  xTicketPct: { color: COLORS.bg, fontFamily: FONT.black, fontSize: 30 },
+  xTicketOff: { color: COLORS.bg, fontFamily: FONT.bold, fontSize: 12, marginTop: 2 },
+  xTicketPerf: { width: 1, borderLeftWidth: 2, borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.16)', marginVertical: 10 },
+  xTicketBody: { flex: 1, padding: 16, alignItems: 'flex-end' },
+  xTicketTitle: { color: '#fff', fontFamily: FONT.bold, fontSize: 14, marginBottom: 4, textAlign: 'right' },
+  xTicketDesc: { color: COLORS.textMuted, fontFamily: FONT.regular, fontSize: 11, lineHeight: 17, marginBottom: 12, textAlign: 'right' },
+  xTicketCodeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%' },
+  xTicketCodeBox: { flex: 1, borderWidth: 1, borderColor: 'rgba(255,193,7,0.3)', borderStyle: 'dashed', borderRadius: 12, paddingVertical: 9, backgroundColor: COLORS.bg },
+  xTicketCode: { color: COLORS.gold, fontFamily: FONT.bold, fontSize: 14, letterSpacing: 2, textAlign: 'center' },
+  xTicketCopy: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.gold, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
+  xTicketCopyTxt: { color: COLORS.bg, fontFamily: FONT.extra, fontSize: 11 },
+  // Loyalty v2 (ring + segmented meter + chips)
+  xLoyalCard: { marginHorizontal: 16, marginTop: 4, backgroundColor: COLORS.card, borderRadius: 26, borderWidth: 1, borderColor: COLORS.line, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 18, elevation: 5 },
+  xLoyalTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  xLoyalRing: { width: 86, height: 86, borderRadius: 43, borderWidth: 6, borderColor: COLORS.gold, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.bg },
+  xLoyalRingNum: { color: '#fff', fontFamily: FONT.black, fontSize: 24 },
+  xLoyalRingLbl: { color: COLORS.textMuted, fontFamily: FONT.medium, fontSize: 10, marginTop: -2 },
+  xLoyalTitle: { color: '#fff', fontFamily: FONT.black, fontSize: 18, textAlign: 'right' },
+  xLoyalSub: { color: COLORS.textMuted, fontFamily: FONT.regular, fontSize: 12, marginTop: 6, textAlign: 'right', lineHeight: 19 },
+  xLoyalSegRow: { flexDirection: 'row', gap: 6, marginTop: 20 },
+  xLoyalSeg: { flex: 1, height: 10, borderRadius: 5, backgroundColor: COLORS.bg },
+  xLoyalSegOn: { backgroundColor: COLORS.gold },
+  xLoyalMetaRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
+  xLoyalMeta: { color: COLORS.textMuted, fontFamily: FONT.medium, fontSize: 12 },
+  xLoyalMetaStrong: { color: COLORS.gold, fontFamily: FONT.bold },
+  xLoyalRedeem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.gold, borderRadius: 16, paddingVertical: 14, marginTop: 16, shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 5 },
+  xLoyalRedeemTxt: { color: COLORS.bg, fontFamily: FONT.extra, fontSize: 14 },
+  xLoyalChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16, justifyContent: 'flex-end' },
+  xLoyalChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.line, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8 },
+  xLoyalChipTxt: { color: '#fff', fontFamily: FONT.medium, fontSize: 11 },
+  // Menu poster grid
+  xMenuGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 16 },
+  xGridCard: { width: (width - 44) / 2, marginBottom: 16, backgroundColor: COLORS.card, borderRadius: 22, borderWidth: 1, borderColor: COLORS.line, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.22, shadowRadius: 12, elevation: 4 },
+  xGridCardOn: { borderColor: COLORS.gold, borderWidth: 2 },
+  xGridImgWrap: { width: '100%', height: 130, backgroundColor: COLORS.surface, position: 'relative' },
+  xGridImg: { width: '100%', height: '100%', resizeMode: 'cover' },
+  xGridPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  xGridBadge: { position: 'absolute', top: 10, right: 10, backgroundColor: COLORS.gold, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  xGridBadgeNew: { backgroundColor: COLORS.red },
+  xGridBadgeTxt: { color: COLORS.bg, fontFamily: FONT.bold, fontSize: 9 },
+  xGridBody: { padding: 12, alignItems: 'flex-end' },
+  xGridName: { color: '#fff', fontFamily: FONT.bold, fontSize: 14, textAlign: 'right' },
+  xGridDesc: { color: COLORS.textMuted, fontFamily: FONT.regular, fontSize: 11, marginTop: 4, textAlign: 'right', lineHeight: 16, minHeight: 32 },
+  xGridFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: 10 },
+  xGridPrice: { color: COLORS.gold, fontFamily: FONT.black, fontSize: 17 },
+  xGridActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  xGridAdd: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.gold, alignItems: 'center', justifyContent: 'center', shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4 },
+  xGridLoyalBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(255,193,7,0.14)', borderWidth: 1, borderColor: 'rgba(255,193,7,0.3)', borderRadius: 12, paddingHorizontal: 8, height: 36, justifyContent: 'center' },
+  xGridLoyalTxt: { color: COLORS.gold, fontFamily: FONT.bold, fontSize: 10 },
+  xGridWarn: { color: COLORS.red, fontFamily: FONT.medium, fontSize: 10, textAlign: 'center', marginTop: 8 },
+  // Gallery showcase labels
+  xGalScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '55%', backgroundColor: 'rgba(11,10,9,0.5)' },
+  xGalLabel: { position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(11,10,9,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
+  xGalLabelTxt: { color: '#fff', fontFamily: FONT.bold, fontSize: 11 },
+  // Coupon — dark accent card (matches loyalty/menu cards)
+  xCoup: { marginHorizontal: 16, marginTop: 4, backgroundColor: COLORS.card, borderRadius: 26, borderWidth: 1, borderColor: COLORS.line, padding: 18, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 18, elevation: 5 },
+  xCoupHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  xCoupBadge: { width: 62, height: 62, borderRadius: 31, backgroundColor: COLORS.gold, alignItems: 'center', justifyContent: 'center', shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 5 },
+  xCoupBadgePct: { color: COLORS.bg, fontFamily: FONT.black, fontSize: 18 },
+  xCoupBadgeOff: { color: COLORS.bg, fontFamily: FONT.bold, fontSize: 10, marginTop: -2 },
+  xCoupHeaderText: { flex: 1, alignItems: 'flex-end' },
+  xCoupTitle: { color: '#fff', fontFamily: FONT.bold, fontSize: 15, textAlign: 'right' },
+  xCoupDesc: { color: COLORS.textMuted, fontFamily: FONT.regular, fontSize: 11, lineHeight: 17, marginTop: 4, textAlign: 'right' },
+  xCoupCodeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16 },
+  xCoupCodeBox: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.bg, borderWidth: 1, borderColor: 'rgba(255,193,7,0.3)', borderStyle: 'dashed', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11 },
+  xCoupCodeLbl: { color: COLORS.textMuted, fontFamily: FONT.medium, fontSize: 11 },
+  xCoupCode: { color: COLORS.gold, fontFamily: FONT.bold, fontSize: 15, letterSpacing: 2 },
+  xCoupCopy: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.gold, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  xCoupCopyTxt: { color: COLORS.bg, fontFamily: FONT.extra, fontSize: 12 },
+  xCoupEmpty: { marginHorizontal: 16, marginTop: 4, backgroundColor: COLORS.card, borderRadius: 26, borderWidth: 1, borderColor: COLORS.line, paddingVertical: 28, alignItems: 'center', gap: 10 },
 });
