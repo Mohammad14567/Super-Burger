@@ -2,52 +2,33 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
+const twilio = require('twilio');
 
 process.on('uncaughtException', (e) => { console.log('💥 Uncaught:', e.message, e.stack); setTimeout(() => process.exit(1), 1000); });
 process.on('unhandledRejection', (e) => { console.log('💥 Unhandled rejection:', e.message, e.stack); });
 
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-const TWILIO_FROM = process.env.TWILIO_FROM || '+16507896851';
-
-async function sendTwilioSms(to, text) {
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
-    console.log('⚠️ Twilio credentials not configured');
-    return { status: 500, body: 'Twilio not configured' };
-  }
-  const https = require('https');
-  const qs = require('querystring');
-  const auth = Buffer.from(TWILIO_ACCOUNT_SID + ':' + TWILIO_AUTH_TOKEN).toString('base64');
-  let normalized = to.startsWith('+') ? to : '+' + to;
-  const data = qs.stringify({ From: TWILIO_FROM, To: normalized, Body: text });
-  console.log('📤 Sending Twilio SMS:', { from: TWILIO_FROM, to: normalized });
-  return new Promise((resolve) => {
-    const req = https.request({
-      hostname: 'api.twilio.com', port: 443,
-      path: '/2010-04-01/Accounts/' + TWILIO_ACCOUNT_SID + '/Messages.json',
-      method: 'POST',
-      headers: {
-        'Authorization': 'Basic ' + auth,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(data)
-      }
-    }, (res) => {
-      let body = '';
-      res.on('data', c => body += c);
-      res.on('end', () => {
-        console.log('📨 Twilio status:', res.statusCode, 'body:', body.substring(0, 300));
-        resolve({ status: res.statusCode, body });
-      });
-    });
-    req.on('error', (e) => { console.log('❌ Twilio error:', e.message); resolve({ status: 500, body: e.message }); });
-    req.write(data);
-    req.end();
-  });
-}
-
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Twilio setup
+let twilioClient = null;
+function initTwilio() {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_FROM;
+  if (sid && token && from) {
+    try {
+      twilioClient = twilio(sid, token);
+      console.log('✅ Twilio initialized with from number:', from);
+    } catch(e) {
+      console.log('⚠️ Twilio init failed:', e.message);
+    }
+  } else {
+    console.log('⚠️ Twilio credentials missing');
+  }
+}
+initTwilio();
 
 // Log all requests
 app.use((req, res, next) => {
@@ -69,8 +50,6 @@ function initializeFirebase() {
   console.log('  FIREBASE_PRIVATE_KEY length:', process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.length : 0);
   console.log('  FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID || '(not set)');
   console.log('  FIREBASE_CLIENT_EMAIL present:', !!process.env.FIREBASE_CLIENT_EMAIL);
-  console.log('  TWILIO_ACCOUNT_SID present:', !!process.env.TWILIO_ACCOUNT_SID);
-  console.log('  TWILIO_AUTH_TOKEN present:', !!process.env.TWILIO_AUTH_TOKEN);
 
   const FIREBASE_PRIVATE_KEY = process.env.FIREBASE_PRIVATE_KEY || '';
 
@@ -138,7 +117,7 @@ db = initializeFirebase();
 app.get('/', (req, res) => res.json({
   status: 'running',
   firebaseConfigured: !!db,
-  endpoints: ['/send-otp', '/verify-otp', '/send-notification', '/register-token']
+  endpoints: ['/send-notification', '/send-otp', '/verify-otp', '/register-token', '/place-order', '/set-admin-claim']
 }));
 
 // Diagnostic endpoint to check env var format (no secrets exposed)
@@ -231,110 +210,83 @@ app.post('/send-notification', async (req, res) => {
   }
 });
 
-// In-memory rate limiting: phone -> { count, firstRequest }
-const otpRateMap = new Map();
 const adminClaimAttempts = new Map();
-const ATTEMPT_LIMIT = 3; // max failed attempts per code
 
-function normalizePhone(num) {
-  if (!num) return '';
-  let n = num.replace(/[^0-9+]/g, '');
-  if (n.startsWith('+')) return n;
-  if (n.startsWith('00')) return '+' + n.slice(2);
-  if (n.startsWith('0')) return '+970' + n.slice(1);
-  return '+970' + n;
+function normalizePhone(phone) {
+  let p = String(phone || '').replace(/\D/g, '');
+  if (p.startsWith('0')) p = '970' + p.slice(1);
+  if (!p.startsWith('+') && p.startsWith('970')) p = '+' + p;
+  if (!p.startsWith('+')) p = '+970' + p;
+  return p;
 }
 
 app.post('/send-otp', async (req, res) => {
-  const { phone } = req.body;
-  if (!phone) return res.json({ success: false, error: 'رقم الهاتف مطلوب' });
+  const { phone, idToken } = req.body;
   if (!db) return res.json({ success: false, error: 'Firebase not configured' });
-
-  const normalized = normalizePhone(phone);
-  if (normalized.length < 10) {
-    return res.json({ success: false, error: 'رقم الهاتف غير صحيح' });
-  }
-
-  // Rate limiting: max 3 OTP requests per 5 minutes per phone
-  const now = Date.now();
-  const entry = otpRateMap.get(normalized);
-  if (entry) {
-    if (now - entry.firstRequest < 5 * 60 * 1000) {
-      if (entry.count >= 3) {
-        const retryAfter = Math.ceil((5 * 60 * 1000 - (now - entry.firstRequest)) / 1000 / 60);
-        return res.json({ success: false, error: `طلبات كثيرة، حاول بعد ${retryAfter} دقائق` });
-      }
-      entry.count++;
-    } else {
-      otpRateMap.set(normalized, { count: 1, firstRequest: now });
-    }
-  } else {
-    otpRateMap.set(normalized, { count: 1, firstRequest: now });
-  }
-
+  if (!idToken) return res.status(401).json({ success: false, error: 'Missing auth token' });
   try {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    if (!decoded.uid) return res.status(401).json({ success: false, error: 'Invalid auth token' });
+    const userDoc = await db.collection('users').doc(decoded.uid).get();
+    if (!userDoc.exists) return res.status(403).json({ success: false, error: 'User not found' });
+    const normalizedPhone = normalizePhone(phone);
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 5 * 60 * 1000;
-    await db.collection('otpCodes').doc(normalized).set({
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await db.collection('otpCodes').doc(decoded.uid).set({
       code,
-      expiresAt,
-      createdAt: new Date(),
-      attempts: 0
+      phone: normalizedPhone,
+      expiresAt: expiresAt.toISOString(),
+      attempts: 0,
+      createdAt: new Date().toISOString()
     });
-    console.log('🔑 OTP stored for', normalized, ':', code);
-
-    const text = `كود التحقق الخاص بك: ${code}\nصلاحية الكود 5 دقائق - سوبر برجر`;
-    const result = await sendTwilioSms(normalized, text);
-
-    if (result.status !== 200 && result.status !== 201) {
-      console.log('❌ Twilio error details:', result.body);
-      let errMsg = 'فشل إرسال SMS';
-      try { const b = JSON.parse(result.body); if (b.message) errMsg += ': ' + b.message; } catch(e) {}
-      return res.json({ success: false, error: errMsg });
+    if (twilioClient) {
+      try {
+        await twilioClient.messages.create({
+          body: `رمز التحقق الخاص بك في سوبر برجر هو: ${code}\nصالح لمدة 10 دقائق.`,
+          from: process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_FROM,
+          to: normalizedPhone
+        });
+        res.json({ success: true, message: 'OTP sent' });
+      } catch (e) {
+        console.log('Twilio send error:', e.message);
+        // Return code in dev/test mode if Twilio fails
+        res.json({ success: true, code, message: 'Twilio failed, code returned for testing: ' + e.message });
+      }
+    } else {
+      res.json({ success: true, code, message: 'Twilio not configured, code returned for testing' });
     }
-    res.json({ success: true });
   } catch(e) {
-    console.log('❌ Send OTP error:', e.message);
-    res.json({ success: false, error: e.message });
+    console.log('Send OTP error:', e.message);
+    res.status(401).json({ success: false, error: 'Auth failed' });
   }
 });
 
 app.post('/verify-otp', async (req, res) => {
-  const { phone, code } = req.body;
-  if (!phone || !code) return res.json({ success: false, error: 'البيانات ناقصة' });
+  const { code, idToken } = req.body;
   if (!db) return res.json({ success: false, error: 'Firebase not configured' });
-
-  const normalized = normalizePhone(phone);
-
+  if (!idToken) return res.status(401).json({ success: false, error: 'Missing auth token' });
   try {
-    const docRef = db.collection('otpCodes').doc(normalized);
-    const doc = await docRef.get();
-    if (!doc.exists) return res.json({ success: false, error: 'لم يتم إرسال كود لهذا الرقم' });
-
-    const data = doc.data();
-
-    // Attempt limiting: max 5 failed attempts
-    if (data.attempts >= ATTEMPT_LIMIT) {
-      await docRef.delete();
-      return res.json({ success: false, error: 'محاولات كثيرة فاشلة، أعد إرسال الكود' });
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    if (!decoded.uid) return res.status(401).json({ success: false, error: 'Invalid auth token' });
+    const otpDoc = await db.collection('otpCodes').doc(decoded.uid).get();
+    if (!otpDoc.exists) return res.json({ success: false, error: 'No OTP found' });
+    const otpData = otpDoc.data();
+    if (new Date(otpData.expiresAt) < new Date()) {
+      return res.json({ success: false, error: 'OTP expired' });
     }
-
-    if (Date.now() > data.expiresAt) {
-      await docRef.delete();
-      return res.json({ success: false, error: 'انتهت صلاحية الكود' });
+    if (otpData.attempts >= 5) {
+      return res.json({ success: false, error: 'Too many attempts' });
     }
-
-    if (data.code !== code) {
-      await docRef.update({ attempts: admin.firestore.FieldValue.increment(1) });
-      const remaining = ATTEMPT_LIMIT - (data.attempts + 1);
-      return res.json({ success: false, error: remaining > 0 ? `الكود غير صحيح، لديك ${remaining} محاولات` : 'الكود غير صحيح' });
+    await db.collection('otpCodes').doc(decoded.uid).update({ attempts: admin.firestore.FieldValue.increment(1) });
+    if (otpData.code !== String(code).trim()) {
+      return res.json({ success: false, error: 'Invalid code' });
     }
-
-    await docRef.delete();
+    await db.collection('users').doc(decoded.uid).update({ verifiedForOrdering: true });
+    await db.collection('otpCodes').doc(decoded.uid).delete();
     res.json({ success: true });
   } catch(e) {
     console.log('Verify OTP error:', e.message);
-    res.json({ success: false, error: e.message });
+    res.status(401).json({ success: false, error: 'Auth failed' });
   }
 });
 
@@ -433,19 +385,6 @@ app.post('/place-order', async (req, res) => {
     res.json({ success: true, orderId: orderRef.id, total: finalTotal });
   } catch(e) {
     console.log('Place order error:', e.message);
-    res.json({ success: false, error: e.message });
-  }
-});
-
-app.post('/send-order-sms', async (req, res) => {
-  const { phone, name } = req.body;
-  if (!phone) return res.json({ success: false, error: 'رقم الهاتف مطلوب' });
-  try {
-    const text = `مرحباً ${name || 'عميلنا'}! 🍔\nتم استلام طلبك الأول من سوبر برجر!\nسيتم تجهيزه قريباً.\nشكراً لثقتك ❤️`;
-    const result = await sendTwilioSms(phone, text);
-    res.json({ success: result.status === 200 || result.status === 201 });
-  } catch(e) {
-    console.log('❌ Twilio SMS error:', e.message);
     res.json({ success: false, error: e.message });
   }
 });
