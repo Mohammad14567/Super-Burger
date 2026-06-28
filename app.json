@@ -15,6 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.superburger.app",
+      "icon": "./assets/icon.png",
       "googleServicesFile": "GoogleService-Info.plist",
       "infoPlist": {
         "UIBackgroundModes": [
